@@ -1,16 +1,21 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 
 from .config import settings
 from .models import QueryRequest, QueryResponse
 from .rag_service import RAGService
 
-app = FastAPI(title=settings.app_name)
 rag_service = RAGService()
 
 
-@app.on_event("startup")
-def startup_event() -> None:
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     rag_service.initialize()
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 
 @app.get("/health")

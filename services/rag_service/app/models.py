@@ -3,6 +3,8 @@ from json import JSONDecodeError
 
 from pydantic import BaseModel, Field, ValidationError
 
+MIN_DESCRIPTION_LENGTH = 2
+
 
 class PropertyListing(BaseModel):
     property_type: str = Field(min_length=1)
@@ -13,7 +15,7 @@ class PropertyListing(BaseModel):
 
 
 class QueryRequest(BaseModel):
-    description: str = Field(min_length=2)
+    description: str = Field(min_length=MIN_DESCRIPTION_LENGTH)
 
     def to_listing(self) -> PropertyListing:
         try:
@@ -29,7 +31,7 @@ class QueryRequest(BaseModel):
 
 class SimilarListing(BaseModel):
     id: str
-    distance: float | None = None
+    distance: float
     listing: PropertyListing
 
 

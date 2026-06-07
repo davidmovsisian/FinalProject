@@ -32,7 +32,7 @@ class RAGService:
 
     def initialize(self) -> None:
         settings.chroma_dir().mkdir(parents=True, exist_ok=True)
-        if self._vectorstore._collection.count() == 0:
+        if self.collection_size() == 0:
             self.seed_vector_store()
 
         if settings.llm_model_path:
@@ -66,6 +66,7 @@ class RAGService:
             texts.append(listing_to_text(listing))
             metadatas.append(
                 {
+                    "id": item["id"],
                     "property_type": listing.property_type,
                     "location": listing.location,
                     "price": listing.price,
@@ -88,10 +89,12 @@ class RAGService:
         for index, (document, distance) in enumerate(results, start=1):
             metadata = document.metadata or {}
             features = metadata.get("features", "")
-            doc_id = getattr(document, "id", None)
+            doc_id = metadata.get("id")
+            if not doc_id:
+                doc_id = f"retrieved-{index}"
             similar.append(
                 SimilarListing(
-                    id=doc_id or f"retrieved-{index}",
+                    id=doc_id,
                     distance=float(distance),
                     listing=PropertyListing(
                         property_type=str(metadata.get("property_type", "unknown")),
@@ -145,4 +148,7 @@ Return 2-4 sentences.
         return str(response).strip()
 
     def collection_size(self) -> int:
-        return self._vectorstore._collection.count()
+        try:
+            return len(self._vectorstore.get()["ids"])
+        except Exception:
+            return 0
