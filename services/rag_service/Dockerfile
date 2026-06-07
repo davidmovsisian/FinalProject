@@ -1,9 +1,7 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_DEFAULT_TIMEOUT=180 \
-    PIP_RETRIES=10
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
@@ -13,7 +11,7 @@ RUN apt-get update \
 
 COPY requirements.txt ./
 RUN pip install --upgrade pip \
-        && pip install --no-cache-dir --timeout ${PIP_DEFAULT_TIMEOUT} --retries ${PIP_RETRIES} -r requirements.txt
+        && pip install --no-cache-dir  -r requirements.txt
 
 COPY app ./app
 
