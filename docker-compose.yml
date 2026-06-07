@@ -1,0 +1,32 @@
+services:
+  rag_model_downloader:
+    image: python:3.11-slim
+    container_name: rag_model_downloader
+    working_dir: /tmp
+    volumes:
+      - rag_models:/models
+    command: >
+      sh -c "pip install --no-cache-dir huggingface_hub
+      && huggingface-cli download dphn/Dolphin3.0-Llama3.1-8B-GGUF Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf --local-dir /models"
+    restart: "no"
+
+  rag_service:
+    build:
+      context: ./services/rag_service
+    container_name: rag_service
+    depends_on:
+      rag_model_downloader:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    environment:
+      RAG_LLM_MODEL_PATH: /models/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf
+      CHROMA_PATH: /app/chroma_db
+    volumes:
+      - rag_chroma:/app/chroma_db
+      - rag_models:/models
+    restart: unless-stopped
+
+volumes:
+  rag_chroma:
+  rag_models:

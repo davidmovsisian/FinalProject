@@ -14,9 +14,7 @@ async def lifespan(_: FastAPI):
     rag_service.initialize()
     yield
 
-
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
-
 
 @app.get("/health")
 def health() -> dict[str, object]:
