@@ -40,7 +40,7 @@ cp .env.example .env
 
 ## Run service
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 If `RAG_LLM_MODEL_PATH` is missing or invalid, the service still returns retrieved listings and an explicit fallback message in `insight`.

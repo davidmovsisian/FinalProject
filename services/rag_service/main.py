@@ -2,9 +2,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
-from .config import settings
-from .models import QueryRequest, QueryResponse
-from .rag_service import RAGService
+from config import settings
+from models import QueryRequest, QueryResponse
+from rag_service import RAGService
 
 rag_service = RAGService()
 

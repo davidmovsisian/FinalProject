@@ -5,10 +5,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.llms import LlamaCpp
 from langchain_community.vectorstores import Chroma
 
-from .config import settings
-from .data import SEED_LISTINGS
-from .models import PropertyListing, SimilarListing
-from .utils import listing_to_text
+from config import settings
+from data import SEED_LISTINGS
+from models import PropertyListing, SimilarListing
+from utils import listing_to_text
 
 
 class RAGService:

@@ -1,4 +1,4 @@
-from .models import PropertyListing
+from models import PropertyListing
 
 
 def listing_to_text(listing: PropertyListing) -> str:
