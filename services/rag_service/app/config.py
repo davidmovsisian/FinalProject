@@ -1,27 +1,31 @@
+import os
 from pathlib import Path
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+load_dotenv()
 
-    app_name: str = "RAG Service"
-    app_host: str = "0.0.0.0"
-    app_port: int = 8000
 
-    chroma_path: str = "./chroma_db"
-    chroma_collection: str = "property_listings"
+class Settings:
+    def __init__(self) -> None:
+        self.app_name = os.getenv("APP_NAME", "RAG Service")
+        self.app_host = os.getenv("APP_HOST", "0.0.0.0")
+        self.app_port = int(os.getenv("APP_PORT", "8000"))
 
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+        self.chroma_path = os.getenv("CHROMA_PATH", "./chroma_db")
+        self.chroma_collection = os.getenv("CHROMA_COLLECTION", "property_listings")
 
-    llm_model_path: str | None = Field(default=None, validation_alias="RAG_LLM_MODEL_PATH")
-    llm_n_ctx: int = 2048
-    llm_temperature: float = 0.2
-    llm_max_tokens: int = 256
+        self.embedding_model = os.getenv(
+            "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+        )
 
-    top_k: int = Field(default=3, ge=1, le=10)
+        self.llm_model_path = os.getenv("RAG_LLM_MODEL_PATH")
+        self.llm_n_ctx = int(os.getenv("LLM_N_CTX", "2048"))
+        self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.2"))
+        self.llm_max_tokens = int(os.getenv("LLM_MAX_TOKENS", "256"))
+
+        self.top_k = int(os.getenv("TOP_K", "3"))
 
     def chroma_dir(self) -> Path:
         return Path(self.chroma_path)

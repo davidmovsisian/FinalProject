@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from langchain.prompts import PromptTemplate
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.prompts import PromptTemplate
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.llms import LlamaCpp
 from langchain_community.vectorstores import Chroma
 
@@ -13,6 +13,7 @@ from .utils import listing_to_text
 
 class RAGService:
     def __init__(self) -> None:
+        print("Initializing RAGService...")
         self._llm_error: str | None = None
         self._embedding = HuggingFaceEmbeddings(model_name=settings.embedding_model)
         self._vectorstore = Chroma(

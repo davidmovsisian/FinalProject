@@ -7,7 +7,7 @@ services:
       - rag_models:/models
     command: >
       sh -c "apt-get update -qq && apt-get install -y -qq wget
-      && wget -c -P /models
+      && wget --no-continue -c -P /models
       'https://huggingface.co/dphn/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf'"
     restart: "no"
 
