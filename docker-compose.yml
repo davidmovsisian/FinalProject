@@ -5,10 +5,16 @@ services:
     working_dir: /tmp
     volumes:
       - rag_models:/models
-    command: >
-      sh -c "apt-get update -qq && apt-get install -y -qq wget
-      && wget --no-continue -c -P /models
-      'https://huggingface.co/dphn/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf'"
+    command:
+      - sh
+      - -c
+      - |
+        apt-get update -qq
+        apt-get install -y -qq wget
+        wget --no-continue -c -P /models \
+          "https://huggingface.co/dphn/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf"
+        pip install -q huggingface_hub
+        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='sentence-transformers/all-MiniLM-L6-v2', local_dir='/models/embeddings/all-MiniLM-L6-v2')"
     restart: "no"
 
   rag_service:
@@ -22,9 +28,10 @@ services:
       - "8000:8000"
     environment:
       RAG_LLM_MODEL_PATH: /models/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf
-      CHROMA_PATH: /app/chroma_db
+      RAG_EMBEDDING_MODEL_PATH: /models/embeddings/all-MiniLM-L6-v2
+      CHROMA_PATH: /rag_service/chroma_db
     volumes:
-      - rag_chroma:/app/chroma_db
+      - rag_chroma:/rag_service/chroma_db
       - rag_models:/models
     restart: unless-stopped
 

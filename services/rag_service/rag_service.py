@@ -15,7 +15,11 @@ class RAGService:
     def __init__(self) -> None:
         print("Initializing RAGService...")
         self._llm_error: str | None = None
-        self._embedding = HuggingFaceEmbeddings(model_name=settings.embedding_model)
+        embedding_source = settings.embedding_model_path or settings.embedding_model
+        self._embedding = HuggingFaceEmbeddings(
+            model_name=embedding_source,
+            model_kwargs={"local_files_only": bool(settings.embedding_model_path)},
+        )
         self._vectorstore = Chroma(
             collection_name=settings.chroma_collection,
             embedding_function=self._embedding,
