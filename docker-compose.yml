@@ -3,13 +3,12 @@ services:
     image: python:3.11-slim
     container_name: rag_model_downloader
     working_dir: /tmp
-    environment:
-      - HF_TOKEN=${HF_TOKEN}
     volumes:
       - rag_models:/models
     command: >
-      sh -c "pip install --no-cache-dir huggingface_hub
-      && hf download dphn/Dolphin3.0-Llama3.1-8B-GGUF Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf --local-dir /models"
+      sh -c "apt-get update -qq && apt-get install -y -qq wget
+      && wget -c -P /models
+      'https://huggingface.co/dphn/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf'"
     restart: "no"
 
   rag_service:
