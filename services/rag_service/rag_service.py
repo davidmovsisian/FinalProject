@@ -68,7 +68,6 @@ class RAGService:
     def seed_vector_store(self) -> int:
         texts = []
         metadatas = []
-        ids = []
 
         for item in SEED_LISTINGS:
             listing = PropertyListing(
@@ -81,7 +80,7 @@ class RAGService:
             texts.append(listing_to_text(listing))
             metadatas.append(
                 {
-                    "id": item["id"],
+                    "id": f"listing-{self._vectorstore.collection_size() + 1}",
                     "property_type": listing.property_type,
                     "location": listing.location,
                     "price": listing.price,
@@ -89,15 +88,13 @@ class RAGService:
                     "features": ", ".join(listing.features),
                 }
             )
-            ids.append(item["id"])
-
-        self._vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        self._vectorstore.add_texts(texts=texts, metadatas=metadatas)
         self._vectorstore.persist()
-        return len(ids)
+        return self._vectorstore.collection_size()
 
-    def add_listing_vector_store(self, listing: PropertyListing) -> None:
+    def add_vector_store(self, listing: PropertyListing) -> None:
         text = listing_to_text(listing)
-        listing_id = f"listing-{self.collection_size() + 1}"
+        listing_id = f"listing-{self._vectorstore.collection_size() + 1}"
         metadata = {
             "id": listing_id,
             "property_type": listing.property_type,

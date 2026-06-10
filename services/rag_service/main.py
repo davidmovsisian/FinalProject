@@ -34,5 +34,7 @@ def create_insight_endpoint(request: InsightRequest) -> InsightResponse:
 
     similar = rag_service.retrieve(listing, k=settings.top_k)
     insight = rag_service.generate_insight(listing, similar)
-    rag_service.add_listing_vector_store(listing)
+    rag_service.add_vector_store(listing)
     return InsightResponse(similar_listings=similar, insight=insight)
+
+
