@@ -14,7 +14,7 @@ class Settings:
         self.app_port = int(os.getenv("APP_PORT", "8000"))
 
         self.chroma_path = os.getenv("CHROMA_PATH", "./chroma_db")
-        self.chroma_collection = os.getenv("CHROMA_COLLECTION", "property_listings")
+        self.listings_collection = os.getenv("LISTINGS_COLLECTION", "property_listings")
 
         self.embedding_model = os.getenv(
             "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"

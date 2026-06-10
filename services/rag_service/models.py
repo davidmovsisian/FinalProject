@@ -14,7 +14,7 @@ class PropertyListing(BaseModel):
     features: list[str] = Field(default_factory=list)
 
 
-class QueryRequest(BaseModel):
+class InsightRequest(BaseModel):
     description: str = Field(min_length=MIN_DESCRIPTION_LENGTH)
 
     def to_listing(self) -> PropertyListing:
@@ -35,6 +35,6 @@ class SimilarListing(BaseModel):
     listing: PropertyListing
 
 
-class QueryResponse(BaseModel):
+class InsightResponse(BaseModel):
     similar_listings: list[SimilarListing]
     insight: str

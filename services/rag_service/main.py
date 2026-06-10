@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 
 from config import settings
-from models import QueryRequest, QueryResponse
+from models import InsightRequest, InsightResponse
 from rag_service import RAGService
 
 rag_service = RAGService()
@@ -25,9 +25,8 @@ def health() -> dict[str, object]:
         "vector_count": rag_service.collection_size(),
     }
 
-
-@app.post("/query", response_model=QueryResponse)
-def query_endpoint(request: QueryRequest) -> QueryResponse:
+@app.post("/create-insight", response_model=InsightResponse)
+def create_insight_endpoint(request: InsightRequest) -> InsightResponse:
     try:
         listing = request.to_listing()
     except ValueError as exc:
@@ -35,4 +34,5 @@ def query_endpoint(request: QueryRequest) -> QueryResponse:
 
     similar = rag_service.retrieve(listing, k=settings.top_k)
     insight = rag_service.generate_insight(listing, similar)
-    return QueryResponse(similar_listings=similar, insight=insight)
+    rag_service.add_listing_vector_store(listing)
+    return InsightResponse(similar_listings=similar, insight=insight)

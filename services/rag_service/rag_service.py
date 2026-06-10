@@ -13,7 +13,7 @@ from utils import listing_to_text
 
 class RAGService:
     def __init__(self) -> None:
-        print("Initializing RAGService...")
+        print("start __init__ RAGService...")
         self._llm_error: str | None = None
         embedding_source = settings.embedding_model_path or settings.embedding_model
         self._embedding = HuggingFaceEmbeddings(
@@ -21,11 +21,12 @@ class RAGService:
             model_kwargs={"local_files_only": bool(settings.embedding_model_path)},
         )
         self._vectorstore = Chroma(
-            collection_name=settings.chroma_collection,
+            collection_name=settings.listings_collection,
             embedding_function=self._embedding,
             persist_directory=str(settings.chroma_dir()),
         )
         self._llm = None
+        print("end __init__ RAGService...")
 
     @property
     def llm_available(self) -> bool:
@@ -40,16 +41,25 @@ class RAGService:
         if self.collection_size() == 0:
             self.seed_vector_store()
 
+        self._llm = None
+        self._llm_error = None
+
         if settings.llm_model_path:
             model_path = Path(settings.llm_model_path)
             if model_path.exists():
-                self._llm = LlamaCpp(
-                    model_path=str(model_path),
-                    temperature=settings.llm_temperature,
-                    max_tokens=settings.llm_max_tokens,
-                    n_ctx=settings.llm_n_ctx,
-                    verbose=False,
-                )
+                try:
+                    self._llm = LlamaCpp(
+                        model_path=str(model_path),
+                        temperature=settings.llm_temperature,
+                        max_tokens=settings.llm_max_tokens,
+                        n_ctx=settings.llm_n_ctx,
+                        verbose=False,
+                    )
+                except Exception as exc:
+                    self._llm_error = (
+                        "Could not initialize LlamaCpp model. "
+                        f"Path: {model_path}. Error: {exc}"
+                    )
             else:
                 self._llm_error = f"GGUF model file not found at: {model_path}"
         else:
@@ -82,8 +92,23 @@ class RAGService:
             ids.append(item["id"])
 
         self._vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        self._vectorstore.persist()
         return len(ids)
 
+    def add_listing_vector_store(self, listing: PropertyListing) -> None:
+        text = listing_to_text(listing)
+        listing_id = f"listing-{self.collection_size() + 1}"
+        metadata = {
+            "id": listing_id,
+            "property_type": listing.property_type,
+            "location": listing.location,
+            "price": listing.price,
+            "rooms_number": listing.rooms_number,
+            "features": ", ".join(listing.features),
+        }
+        self._vectorstore.add_texts(texts=[text], metadatas=[metadata], ids=[listing_id])
+        self._vectorstore.persist()
+        
     def retrieve(self, listing: PropertyListing, k: int | None = None) -> list[SimilarListing]:
         results = self._vectorstore.similarity_search_with_score(
             query=listing_to_text(listing),
