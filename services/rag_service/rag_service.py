@@ -77,6 +77,32 @@ class RAGService:
             sanitized = re.sub(r",\s*([\]}])", r"\1", raw_text)
             return json.loads(sanitized)
 
+    @staticmethod
+    def _conditions_to_text(conditions: list[dict]) -> str:
+        return "; ".join(
+            (
+                f"{condition.get('type', 'unknown')}"
+                f" score={condition.get('condition_score', 'unknown')}"
+                f" confidence={condition.get('confidence', 'unknown')}"
+            )
+            for condition in conditions
+        )
+
+    @staticmethod
+    def _parse_conditions(raw_conditions: object) -> list[dict]:
+        if isinstance(raw_conditions, list):
+            return raw_conditions
+
+        if isinstance(raw_conditions, str):
+            try:
+                parsed = json.loads(raw_conditions)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                return []
+
+        return []
+
     def seed_vector_store(self) -> int:
         texts = []
         metadatas = []
@@ -88,8 +114,13 @@ class RAGService:
                 price=item["price"],
                 rooms_number=item["rooms_number"],
                 features=item["features"],
+                conditions=item.get("conditions", []),
             )
-            texts.append(listing_to_text(listing))
+            conditions_payload = [condition.model_dump() for condition in listing.conditions]
+            text = listing_to_text(listing)
+            if conditions_payload:
+                text = f"{text} Conditions: {self._conditions_to_text(conditions_payload)}."
+            texts.append(text)
             metadatas.append(
                 {
                     "id": f"listing-{index}",
@@ -98,6 +129,7 @@ class RAGService:
                     "price": listing.price,
                     "rooms_number": listing.rooms_number,
                     "features": ", ".join(listing.features),
+                    "conditions": json.dumps(conditions_payload),
                 }
             )
         ids = [metadata["id"] for metadata in metadatas]
@@ -106,7 +138,10 @@ class RAGService:
         return self._vectorstore.collection_size()
 
     def add_vector_store(self, listing: PropertyListing) -> None:
+        conditions_payload = [condition.model_dump() for condition in listing.conditions]
         text = listing_to_text(listing)
+        if conditions_payload:
+            text = f"{text} Conditions: {self._conditions_to_text(conditions_payload)}."
         listing_id = f"listing-{self._vectorstore.collection_size() + 1}"
         metadata = {
             "id": listing_id,
@@ -115,6 +150,7 @@ class RAGService:
             "price": listing.price,
             "rooms_number": listing.rooms_number,
             "features": ", ".join(listing.features),
+            "conditions": json.dumps(conditions_payload),
         }
         self._vectorstore.add_texts(texts=[text], metadatas=[metadata], ids=[listing_id])
         self._vectorstore.persist()
@@ -129,6 +165,7 @@ class RAGService:
         for index, (document, distance) in enumerate(results, start=1):
             metadata = document.metadata or {}
             features = metadata.get("features", "")
+            conditions = self._parse_conditions(metadata.get("conditions", []))
             doc_id = metadata.get("id")
             if not doc_id:
                 doc_id = f"retrieved-{index}"
@@ -142,9 +179,13 @@ class RAGService:
                         price=str(metadata.get("price", "unknown")),
                         rooms_number=int(metadata.get("rooms_number", 0)),
                         features=[part.strip() for part in str(features).split(",") if part.strip()],
+                        conditions=conditions,
                     ),
                 )
             )
+
+        for item in similar:
+            print(item.model_dump())
 
         return similar
 
