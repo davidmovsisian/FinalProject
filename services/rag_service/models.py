@@ -42,6 +42,10 @@ class SimilarListing(BaseModel):
     listing: PropertyListing
 
 
-class InsightResponse(BaseModel):
+class RetrieveResponse(BaseModel):
     similar_listings: list[SimilarListing]
-    insight: str
+
+
+class AddListingResponse(BaseModel):
+    success: bool
+    listing_id: str

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 
 from config import settings
-from models import InsightRequest, InsightResponse
+from models import AddListingResponse, InsightRequest, RetrieveResponse
 from rag_service import RAGService
 
 rag_service = RAGService()
@@ -20,21 +20,27 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 def health() -> dict[str, object]:
     return {
         "status": "ok",
-        "llm_available": rag_service.llm_available,
-        "llm_error": rag_service.llm_error,
         "vector_count": rag_service.collection_size(),
     }
 
-@app.post("/create-insight", response_model=InsightResponse)
-def create_insight_endpoint(request: InsightRequest) -> InsightResponse:
+@app.post("/retrieve", response_model=RetrieveResponse)
+def retrieve_endpoint(request: InsightRequest) -> RetrieveResponse:
     try:
         listing = request.to_listing()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     similar = rag_service.retrieve(listing, k=settings.top_k)
-    insight = rag_service.generate_insight(listing, similar)
-    rag_service.add_vector_store(listing)
-    return InsightResponse(similar_listings=similar, insight=insight)
+    return RetrieveResponse(similar_listings=similar)
 
+
+@app.post("/add", response_model=AddListingResponse)
+def add_listing_endpoint(request: InsightRequest) -> AddListingResponse:
+    try:
+        listing = request.to_listing()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    listing_id = rag_service.add_vector_store(listing)
+    return AddListingResponse(success=True, listing_id=listing_id)
 

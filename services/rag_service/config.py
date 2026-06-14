@@ -20,10 +20,6 @@ class Settings:
             "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
         )
         self.embedding_model_path = os.getenv("RAG_EMBEDDING_MODEL_PATH")
-        self.llm_model_path = os.getenv("RAG_LLM_MODEL_PATH")
-        self.llm_n_ctx = int(os.getenv("LLM_N_CTX", "2048"))
-        self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.2"))
-        self.llm_max_tokens = int(os.getenv("LLM_MAX_TOKENS", "256"))
 
         self.top_k = int(os.getenv("TOP_K", "3"))
 
