@@ -219,3 +219,6 @@ __marimo__/
 
 # Local model artifacts
 models/
+
+# House room dataset
+services/image_analyzer/House_Room_Dataset/
