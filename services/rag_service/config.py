@@ -14,7 +14,12 @@ class Settings:
         self.app_port = int(os.getenv("APP_PORT", "8000"))
 
         self.chroma_path = os.getenv("CHROMA_PATH", "./chroma_db")
-        self.listings_collection = os.getenv("LISTINGS_COLLECTION", "property_listings")
+        # Keep CHROMA_COLLECTION fallback for backward compatibility with existing env files.
+        listings_collection = os.getenv("LISTINGS_COLLECTION")
+        legacy_collection = os.getenv("CHROMA_COLLECTION")
+        self.listings_collection = (
+            listings_collection or legacy_collection or "property_listings"
+        )
 
         self.embedding_model = os.getenv(
             "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"

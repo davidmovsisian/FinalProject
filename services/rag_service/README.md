@@ -57,7 +57,7 @@ Response:
 
 ## Setup
 ```bash
-cd /home/runner/work/FinalProject/FinalProject/davidmovsisian/FinalProject/services/rag_service
+cd services/rag_service
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 
 from assistant_service import AssistantService
 from config import settings
@@ -29,9 +29,6 @@ def health() -> dict[str, object]:
 
 @app.post("/generate-insight", response_model=InsightResponse)
 def generate_insight_endpoint(request: InsightRequest) -> InsightResponse:
-    if not request.query.strip():
-        raise HTTPException(status_code=422, detail="query must not be blank")
-
     insight = assistant_service.generate_insight(
         query=request.query,
         context=request.context,

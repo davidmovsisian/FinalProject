@@ -27,7 +27,7 @@ Response:
 
 ## Setup
 ```bash
-cd /home/runner/work/FinalProject/FinalProject/davidmovsisian/FinalProject/services/assistant_service
+cd services/assistant_service
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
