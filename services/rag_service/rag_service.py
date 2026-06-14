@@ -1,3 +1,5 @@
+import json
+import re
 from pathlib import Path
 
 from langchain_core.prompts import PromptTemplate
@@ -6,7 +8,6 @@ from langchain_community.llms import LlamaCpp
 from langchain_community.vectorstores import Chroma
 
 from config import settings
-from data import SEED_LISTINGS
 from models import PropertyListing, SimilarListing
 from utils import listing_to_text
 
@@ -65,11 +66,22 @@ class RAGService:
         else:
             self._llm_error = "RAG_LLM_MODEL_PATH is not set"
 
+    def _load_seed_listings(self) -> list[dict]:
+        data_file = Path(__file__).resolve().parent / "data.json"
+        raw_text = data_file.read_text(encoding="utf-8")
+
+        try:
+            return json.loads(raw_text)
+        except json.JSONDecodeError:
+            # Be tolerant of trailing commas in the seed file.
+            sanitized = re.sub(r",\s*([\]}])", r"\1", raw_text)
+            return json.loads(sanitized)
+
     def seed_vector_store(self) -> int:
         texts = []
         metadatas = []
 
-        for item in SEED_LISTINGS:
+        for index, item in enumerate(self._load_seed_listings(), start=1):
             listing = PropertyListing(
                 property_type=item["property_type"],
                 location=item["location"],
@@ -80,7 +92,7 @@ class RAGService:
             texts.append(listing_to_text(listing))
             metadatas.append(
                 {
-                    "id": f"listing-{self._vectorstore.collection_size() + 1}",
+                    "id": f"listing-{index}",
                     "property_type": listing.property_type,
                     "location": listing.location,
                     "price": listing.price,
@@ -88,7 +100,8 @@ class RAGService:
                     "features": ", ".join(listing.features),
                 }
             )
-        self._vectorstore.add_texts(texts=texts, metadatas=metadatas)
+        ids = [metadata["id"] for metadata in metadatas]
+        self._vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
         self._vectorstore.persist()
         return self._vectorstore.collection_size()
 
