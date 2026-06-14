@@ -13,6 +13,9 @@ from pydantic import BaseModel, HttpUrl
 from fastapi import FastAPI, HTTPException
 from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # =====================================================================
 # 1. API Input/Output Schemas (Pydantic)
@@ -134,9 +137,10 @@ class HouseRoomsMultiTaskDataset(datasets.ImageFolder):
 # 4. Global State & FastAPI Lifetime Configuration
 # =====================================================================
 # Standard runtime configurations
+APP_NAME = os.getenv("APP_NAME", "Multi-Task House Room Analyzer Engine")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-WEIGHTS_PATH = "house_model_weights.pth"
-DATASET_DIR = "House_Room_Dataset"  
+WEIGHTS_PATH = os.getenv("WEIGHTS_PATH", "house_model_weights.pth")
+DATASET_DIR = os.getenv("DATASET_DIR", "House_Room_Dataset")  
 
 # Shared normalization transforms used universally
 IMAGE_TRANSFORMS = transforms.Compose([

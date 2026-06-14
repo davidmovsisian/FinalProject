@@ -35,6 +35,16 @@ services:
       - rag_models:/models
     restart: unless-stopped
 
+  image_analyzer_service:
+    build:
+      context: ./services/image_analyzer
+    container_name: image_analyzer_service
+    env_file:
+      - ./services/image_analyzer/.env
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+    
 volumes:
   rag_chroma:
   rag_models:
