@@ -30,7 +30,6 @@ def health() -> dict[str, object]:
 @app.post("/generate-insight", response_model=InsightResponse)
 def generate_insight_endpoint(request: InsightRequest) -> InsightResponse:
     insight = assistant_service.generate_insight(
-        query=request.query,
-        context=request.context,
+        query=request.query
     )
     return InsightResponse(insight=insight)

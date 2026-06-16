@@ -72,7 +72,7 @@ class RAGService:
         self._vectorstore.persist()
         return self._vectorstore.collection_size()
 
-    def add_vector_store(self, listing: PropertyListing) -> str:
+    def add_listing(self, listing: PropertyListing) -> str:
         text = listing_to_text(listing)
         listing_id = f"listing-{self._vectorstore.collection_size() + 1}"
         metadata = {
@@ -88,7 +88,7 @@ class RAGService:
         self._vectorstore.persist()
         return listing_id
         
-    def retrieve(self, listing: PropertyListing, k: int | None = None) -> list[SimilarListing]:
+    def retrieve_listings(self, listing: PropertyListing, k: int | None = None) -> list[SimilarListing]:
         results = self._vectorstore.similarity_search_with_score(
             query=listing_to_text(listing),
             k=k or settings.top_k,
