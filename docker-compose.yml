@@ -27,11 +27,25 @@ services:
     ports:
       - "8000:8000"
     environment:
-      RAG_LLM_MODEL_PATH: /models/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf
       RAG_EMBEDDING_MODEL_PATH: /models/embeddings/all-MiniLM-L6-v2
       CHROMA_PATH: /rag_service/chroma_db
     volumes:
       - rag_chroma:/rag_service/chroma_db
+      - rag_models:/models
+    restart: unless-stopped
+
+  assistant_service:
+    build:
+      context: ./services/assistant_service
+    container_name: assistant_service
+    depends_on:
+      rag_model_downloader:
+        condition: service_completed_successfully
+    ports:
+      - "8001:8001"
+    environment:
+      ASSISTANT_LLM_MODEL_PATH: /models/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf
+    volumes:
       - rag_models:/models
     restart: unless-stopped
 
@@ -42,7 +56,7 @@ services:
     env_file:
       - ./services/image_analyzer/.env
     ports:
-      - "8001:8000"
+      - "8002:8000"
     restart: unless-stopped
     
 volumes:
