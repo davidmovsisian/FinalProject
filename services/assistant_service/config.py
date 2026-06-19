@@ -13,9 +13,9 @@ class Settings:
         self.app_port = int(os.getenv("APP_PORT", "8001"))
 
         self.assistant_llm_model_path = os.getenv("ASSISTANT_LLM_MODEL_PATH")
-        self.llm_n_ctx = int(os.getenv("LLM_N_CTX", "2048"))
-        self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.2"))
-        self.llm_max_tokens = int(os.getenv("LLM_MAX_TOKENS", "256"))
+        self.llm_n_ctx = int(os.getenv("LLM_N_CTX", "4096"))
+        self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+        self.llm_max_tokens = int(os.getenv("LLM_MAX_TOKENS", "512"))
 
 
 settings = Settings()

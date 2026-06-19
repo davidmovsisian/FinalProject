@@ -1,0 +1,65 @@
+
+#image_analyzer_service
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8002/analyse" `
+  -ContentType "application/json" `
+  -Body '{
+    "image_urls": [
+      "https://raw.githubusercontent.com/davidmovsisian/FinalProject/main/services/image_analyzer/bath_1.jpg"
+    ]
+  }'
+--------------------------------
+#assistant_service
+$body = @{
+    query = "What factors affect property valuation?"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://127.0.0.1:8001/general_answer" `
+    -ContentType "application/json" `
+    -Body $body
+	
+---------------------------------
+
+#rag_service 
+# 1) Build a listing object that matches the schema
+$listing = @{
+    property_type = "Apartment"
+    location      = "Yerevan, Arabkir"
+    price         = "120000"
+    rooms_number  = 3
+    features      = @("balcony", "parking", "renovated")
+    conditions    = @(
+        @{
+            type            = "Bathroom"
+            condition_score = 4
+            confidence      = 0.93
+        },
+        @{
+            type            = "Kitchen"
+            condition_score = 3
+            confidence      = 0.88
+        }
+    )
+} | ConvertTo-Json -Depth 10 -Compress
+
+# 2) /retrieve expects: { "description": "<JSON string>" }
+$body = @{
+    description = $listing
+} | ConvertTo-Json -Compress
+
+# 3) Call endpoint
+Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://127.0.0.1:8000/retrieve" `
+    -ContentType "application/json" `
+    -Body $body
+
+# 4)To display the entire response
+$response = Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://127.0.0.1:8000/retrieve" `
+  -ContentType "application/json" `
+  -Body $body
+
+$response | ConvertTo-Json -Depth 20

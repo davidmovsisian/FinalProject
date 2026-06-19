@@ -1,11 +1,6 @@
 from pathlib import Path
-
-from langchain_core.prompts import PromptTemplate
-from langchain_community.llms import LlamaCpp
-
+from llama_cpp import Llama
 from config import settings
-from utils import format_context
-
 
 class AssistantService:
     def __init__(self) -> None:
@@ -21,14 +16,11 @@ class AssistantService:
         return self._llm_error
 
     def initialize(self) -> None:
-        self._llm = None
-        self._llm_error = None
-
         if settings.assistant_llm_model_path:
             model_path = Path(settings.assistant_llm_model_path)
             if model_path.exists():
                 try:
-                    self._llm = LlamaCpp(
+                    self._llm = Llama(
                         model_path=str(model_path),
                         temperature=settings.llm_temperature,
                         max_tokens=settings.llm_max_tokens,
@@ -45,31 +37,50 @@ class AssistantService:
         else:
             self._llm_error = "ASSISTANT_LLM_MODEL_PATH is not set"
 
-    def generate_insight(self, query: str, context: str = "") -> str:
+    def general_answer(self, query: str) -> str:
+        SYSTEM_PROMPT = """
+            You are a knowledgeable and professional Real Estate Assistant.
+
+            Answer questions related to:
+
+            - property valuation
+            - residential and commercial real estate
+            - inspections
+            -certifications
+            - mortgages
+            - rentals
+            - investments
+            - zoning
+            - sustainability
+            -construction quality
+            -property maintenance
+
+            If the question is unrelated to real estate,
+            reply exactly:
+
+            Please ask a real-estate-related question.
+
+            Keep answers concise (2-4 sentences).
+            """
         if not self._llm:
             return (
                 "LLM generation is unavailable. "
                 f"Reason: {self._llm_error or 'unknown error'}."
             )
-
-        prompt = PromptTemplate.from_template(
-            """
-You are a real-estate assistant.
-Use only the provided similar listings context to produce a concise insight.
-Do not fabricate facts. If context is insufficient, explicitly say so.
-Always cite the listing IDs that informed your insight.
-
-User query:
-{query}
-
-Similar listings:
-{context}
-
-Return 2-4 sentences.
-""".strip()
+        print(f"Generating answer for query: {query}")
+        response = self._llm.create_chat_completion(
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"{SYSTEM_PROMPT}"
+                },
+                {
+                    "role": "user",
+                    "content": query
+                }
+            ]
         )
 
-        response = self._llm.invoke(
-            prompt.format(query=query.strip(), context=format_context(context))
-        )
-        return str(response).strip()
+        answer = response["choices"][0]["message"]["content"]
+        print(f"Generated answer: {answer}")
+        return answer
