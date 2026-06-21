@@ -1,0 +1,493 @@
+import gradio as gr
+import requests
+import json
+import os
+
+# ─────────────────────────────────────────────
+#  Configuration (read from env or defaults)
+# ─────────────────────────────────────────────
+N8N_WEBHOOK_URL_DEFAULT = os.getenv("N8N_WEBHOOK_URL", "")
+AI_ASSISTANT_API_URL_DEFAULT = os.getenv("AI_ASSISTANT_API_URL", "http://localhost:8001/chat")
+
+# ─────────────────────────────────────────────
+#  State helpers
+# ─────────────────────────────────────────────
+_config = {
+    "n8n_webhook_url": N8N_WEBHOOK_URL_DEFAULT,
+    "ai_assistant_api_url": AI_ASSISTANT_API_URL_DEFAULT,
+}
+
+def save_config(n8n_webhook_url: str, ai_assistant_api_url: str):
+    _config["n8n_webhook_url"] = n8n_webhook_url.strip()
+    _config["ai_assistant_api_url"] = ai_assistant_api_url.strip()
+    return "✅ Configuration saved successfully."
+
+
+# ─────────────────────────────────────────────
+#  AI Assistant chat
+# ─────────────────────────────────────────────
+def chat_with_assistant(message: str, history: list):
+    """Send message to the AI assistant service and stream/return the reply."""
+    if not message.strip():
+        return history, ""
+
+    api_url = _config.get("ai_assistant_api_url", "").strip()
+
+    if not api_url:
+        history = history + [[message, "⚠️ AI Assistant API URL is not configured. Please set it in the Configuration tab."]]
+        return history, ""
+
+    try:
+        payload = {
+            "message": message,
+            "history": [{"role": "user" if i % 2 == 0 else "assistant", "content": m}
+                        for turn in history for i, m in enumerate(turn)],
+        }
+        response = requests.post(api_url, json=payload, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+        reply = data.get("response") or data.get("message") or data.get("answer") or str(data)
+    except requests.exceptions.ConnectionError:
+        reply = "⚠️ Could not connect to the AI assistant service. Please check the API URL in Configuration."
+    except requests.exceptions.Timeout:
+        reply = "⚠️ The AI assistant service timed out. Please try again."
+    except Exception as exc:
+        reply = f"⚠️ Error: {exc}"
+
+    history = history + [[message, reply]]
+    return history, ""
+
+
+# ─────────────────────────────────────────────
+#  Listing submission
+# ─────────────────────────────────────────────
+def submit_listing(
+    agent_name: str,
+    description: str,
+    image_urls: str,
+    images,            # file-upload list
+):
+    """POST the listing to the n8n webhook and return the structured report."""
+    webhook_url = _config.get("n8n_webhook_url", "").strip()
+
+    if not webhook_url:
+        return (
+            gr.update(visible=False),
+            gr.update(visible=True, value="⚠️ n8n Webhook URL is not configured. Please set it in the Configuration tab."),
+        )
+
+    if not description.strip():
+        return (
+            gr.update(visible=False),
+            gr.update(visible=True, value="⚠️ Property description is required."),
+        )
+
+    # Build image URL list
+    url_list = [u.strip() for u in image_urls.split(",") if u.strip()] if image_urls else []
+
+    # Attach uploaded file paths if provided
+    if images:
+        for img in images:
+            url_list.append(f"file://{img}")
+
+    payload = {
+        "agent_name": agent_name.strip(),
+        "description": description.strip(),
+        "image_urls": url_list,
+    }
+
+    try:
+        response = requests.post(webhook_url, json=payload, timeout=120)
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.ConnectionError:
+        return (
+            gr.update(visible=False),
+            gr.update(visible=True, value="⚠️ Could not connect to n8n. Please check the Webhook URL in Configuration."),
+        )
+    except requests.exceptions.Timeout:
+        return (
+            gr.update(visible=False),
+            gr.update(visible=True, value="⚠️ The n8n workflow timed out. Please try again."),
+        )
+    except Exception as exc:
+        return (
+            gr.update(visible=False),
+            gr.update(visible=True, value=f"⚠️ Submission error: {exc}"),
+        )
+
+    report_md = _format_report(data)
+    return (
+        gr.update(visible=True, value=report_md),
+        gr.update(visible=False),
+    )
+
+
+def _format_report(data: dict) -> str:
+    """Convert the n8n response JSON into readable Markdown."""
+    lines = ["## 📋 Property Triage Report", ""]
+
+    prop_type = data.get("property_type", data.get("propertyType", "—"))
+    location   = data.get("location", "—")
+    price      = data.get("price", "—")
+    rooms      = data.get("rooms", data.get("number_of_rooms", "—"))
+    features   = data.get("key_features", data.get("keyFeatures", []))
+    routing    = data.get("routed_to", data.get("routedTo", "—"))
+    brief      = data.get("listing_brief", data.get("listingBrief", data.get("report", "")))
+    images_out = data.get("image_analysis", data.get("imageAnalysis", []))
+    similar    = data.get("similar_listings", data.get("similarListings", []))
+
+    lines += [
+        f"**Property Type:** {prop_type}  ",
+        f"**Location:** {location}  ",
+        f"**Price:** {price}  ",
+        f"**Rooms:** {rooms}  ",
+    ]
+
+    if features:
+        if isinstance(features, list):
+            lines += ["", "**Key Features:**"]
+            lines += [f"- {f}" for f in features]
+        else:
+            lines += [f"**Key Features:** {features}"]
+
+    if routing:
+        lines += ["", f"**Routed to:** {routing}"]
+
+    if images_out:
+        lines += ["", "---", "### 🖼️ Image Analysis"]
+        for img in (images_out if isinstance(images_out, list) else [images_out]):
+            room  = img.get("room_type", "—")
+            score = img.get("condition_score", "—")
+            conf  = img.get("confidence", None)
+            conf_str = f"  _(confidence: {conf:.0%})_" if conf is not None else ""
+            lines.append(f"- **{room}** — condition score: **{score}/5**{conf_str}")
+
+    if similar:
+        lines += ["", "---", "### 🔍 Similar Listings"]
+        for item in (similar if isinstance(similar, list) else [similar]):
+            if isinstance(item, dict):
+                title   = item.get("title", item.get("id", "Listing"))
+                insight = item.get("insight", item.get("summary", ""))
+                lines.append(f"- **{title}**: {insight}")
+            else:
+                lines.append(f"- {item}")
+
+    if brief:
+        lines += ["", "---", "### 📝 Listing Brief", "", brief]
+
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────
+#  Build the Gradio UI
+# ─────────────────────────────────────────────
+CUSTOM_CSS = """
+/* ── Global ───────────────────────────────── */
+body, .gradio-container {
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif !important;
+    background: #f8fafc !important;
+}
+
+/* ── Header banner ────────────────────────── */
+#header-banner {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
+    border-radius: 12px;
+    padding: 28px 32px 20px;
+    margin-bottom: 8px;
+    color: white;
+}
+#header-banner h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin: 0 0 4px;
+    color: white !important;
+}
+#header-banner p {
+    margin: 0;
+    opacity: 0.85;
+    font-size: 0.95rem;
+    color: white !important;
+}
+
+/* ── Tabs ─────────────────────────────────── */
+.tab-nav button {
+    font-weight: 600 !important;
+    font-size: 0.92rem !important;
+}
+
+/* ── Cards ────────────────────────────────── */
+.card {
+    background: white;
+    border-radius: 10px;
+    padding: 20px 22px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    margin-bottom: 12px;
+}
+
+/* ── Submit button ────────────────────────── */
+#submit-btn {
+    background: linear-gradient(135deg, #1e3a5f, #2d6a9f) !important;
+    color: white !important;
+    font-weight: 700 !important;
+    font-size: 1rem !important;
+    border-radius: 8px !important;
+    padding: 10px 24px !important;
+}
+#submit-btn:hover {
+    opacity: 0.9 !important;
+}
+
+/* ── Report box ───────────────────────────── */
+#report-box {
+    background: #f0f7ff;
+    border: 1px solid #b3d4f5;
+    border-radius: 10px;
+    padding: 18px;
+}
+
+/* ── Chat ─────────────────────────────────── */
+#chat-box .message.bot {
+    background: #e8f4fd !important;
+    border-radius: 10px !important;
+}
+
+/* ── Config section ───────────────────────── */
+#config-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* ── Status badges ────────────────────────── */
+.status-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.status-pill.green { background:#dcfce7; color:#166534; }
+.status-pill.red   { background:#fee2e2; color:#991b1b; }
+
+/* ── Sidebar info box ─────────────────────── */
+#info-box {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 0.85rem;
+    color: #1e40af;
+}
+
+/* ── Error box ────────────��───────────────── */
+#error-box {
+    background: #fff1f2;
+    border: 1px solid #fda4af;
+    border-radius: 8px;
+    padding: 14px 16px;
+    color: #be123c;
+}
+"""
+
+def build_ui():
+    with gr.Blocks(css=CUSTOM_CSS, title="AI Property Triage System") as demo:
+
+        # ── Header ──────────────────────────────────
+        gr.HTML("""
+        <div id="header-banner">
+          <h1>🏠 AI Property Triage System</h1>
+          <p>Automated real-estate listing intake &amp; evaluation powered by AI</p>
+        </div>
+        """)
+
+        # ── Tabs ─────────────────────────────────────
+        with gr.Tabs():
+
+            # ─────────────────────────────────────────
+            #  TAB 1 — Property Submission
+            # ─────────────────────────────────────────
+            with gr.TabItem("📝 Submit Listing"):
+                gr.Markdown(
+                    "Fill in the property details below and click **Submit Listing** to start the AI triage pipeline.",
+                    elem_classes="card",
+                )
+
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        agent_name_input = gr.Textbox(
+                            label="Listing Agent Name",
+                            placeholder="e.g. Sarah Cohen",
+                            max_lines=1,
+                        )
+                        description_input = gr.Textbox(
+                            label="Property Description ✱",
+                            placeholder="Describe the property in detail — type, size, location, condition, features …",
+                            lines=8,
+                        )
+                        image_urls_input = gr.Textbox(
+                            label="Image URLs (comma-separated)",
+                            placeholder="https://example.com/img1.jpg, https://example.com/img2.jpg",
+                            lines=2,
+                        )
+                        image_upload = gr.File(
+                            label="Or upload images directly",
+                            file_count="multiple",
+                            file_types=["image"],
+                        )
+
+                        submit_btn = gr.Button(
+                            "🚀 Submit Listing",
+                            variant="primary",
+                            elem_id="submit-btn",
+                        )
+
+                    with gr.Column(scale=2):
+                        gr.HTML("""
+                        <div id="info-box">
+                          <strong>ℹ️ How it works</strong><br><br>
+                          1. Your submission is validated by the <b>Guardrails</b> service.<br><br>
+                          2. An AI extractor identifies property type, rooms, price, and key features.<br><br>
+                          3. Each image is classified by room type and given a <b>condition score (1–5)</b>.<br><br>
+                          4. Similar past listings are retrieved from the <b>knowledge base</b>.<br><br>
+                          5. A final <b>listing brief</b> is generated and the listing is routed to the correct team.
+                        </div>
+                        """)
+
+                # Results area
+                with gr.Row():
+                    with gr.Column():
+                        report_output = gr.Markdown(
+                            label="Triage Report",
+                            elem_id="report-box",
+                            visible=False,
+                        )
+                        error_output = gr.Markdown(
+                            label="",
+                            elem_id="error-box",
+                            visible=False,
+                        )
+
+                submit_btn.click(
+                    fn=submit_listing,
+                    inputs=[agent_name_input, description_input, image_urls_input, image_upload],
+                    outputs=[report_output, error_output],
+                )
+
+            # ─────────────────────────────────────────
+            #  TAB 2 — AI Assistant
+            # ─────────────────────────────────────────
+            with gr.TabItem("💬 AI Assistant"):
+                with gr.Row():
+                    with gr.Column(scale=4):
+                        chatbot = gr.Chatbot(
+                            label="Real Estate AI Assistant",
+                            height=480,
+                            elem_id="chat-box",
+                            bubble_full_width=False,
+                        )
+                        with gr.Row():
+                            chat_input = gr.Textbox(
+                                label="",
+                                placeholder="Ask about property market trends, valuations, investment advice …",
+                                scale=5,
+                                max_lines=3,
+                                show_label=False,
+                            )
+                            send_btn = gr.Button("Send ➤", scale=1, variant="primary")
+
+                        gr.Examples(
+                            examples=[
+                                ["What are the current real estate market trends?"],
+                                ["How do I evaluate a property's condition score?"],
+                                ["What makes a good listing description?"],
+                                ["What is the difference between residential and commercial listings?"],
+                                ["What renovation tips would improve a property's value?"],
+                            ],
+                            inputs=chat_input,
+                            label="Example questions",
+                        )
+
+                    with gr.Column(scale=1):
+                        gr.HTML("""
+                        <div id="info-box">
+                          <strong>🤖 AI Assistant</strong><br><br>
+                          Your knowledgeable real-estate assistant is ready to help.<br><br>
+                          Ask about:<br>
+                          • Market trends &amp; valuations<br>
+                          • Property types &amp; features<br>
+                          • Investment advice<br>
+                          • Listing best practices<br><br>
+                          <em>The assistant stays on real-estate topics and will politely decline off-topic requests.</em>
+                        </div>
+                        """)
+
+                send_btn.click(
+                    fn=chat_with_assistant,
+                    inputs=[chat_input, chatbot],
+                    outputs=[chatbot, chat_input],
+                )
+                chat_input.submit(
+                    fn=chat_with_assistant,
+                    inputs=[chat_input, chatbot],
+                    outputs=[chatbot, chat_input],
+                )
+
+            # ─────────────────────────────────────────
+            #  TAB 3 — Configuration
+            # ─────────────────────────────────────────
+            with gr.TabItem("⚙️ Configuration"):
+                gr.Markdown("### Service Configuration")
+                gr.Markdown(
+                    "Configure the URLs for backend services. Changes take effect immediately without restarting.",
+                    elem_classes="card",
+                )
+
+                with gr.Column(elem_id="config-card"):
+                    n8n_url_input = gr.Textbox(
+                        label="n8n Webhook URL",
+                        placeholder="https://your-n8n-instance.app.n8n.cloud/webhook/property-triage",
+                        value=N8N_WEBHOOK_URL_DEFAULT,
+                        info="The n8n webhook endpoint that receives listing submissions.",
+                    )
+                    ai_api_url_input = gr.Textbox(
+                        label="AI Assistant API URL",
+                        placeholder="http://<EC2-IP>:8001/chat",
+                        value=AI_ASSISTANT_API_URL_DEFAULT,
+                        info="The backend endpoint for the conversational AI assistant.",
+                    )
+
+                    save_btn = gr.Button("💾 Save Configuration", variant="primary")
+                    save_status = gr.Markdown("")
+
+                save_btn.click(
+                    fn=save_config,
+                    inputs=[n8n_url_input, ai_api_url_input],
+                    outputs=[save_status],
+                )
+
+                gr.Markdown("""---
+### Environment Variables
+
+You can also pre-set configuration via environment variables before launching:
+
+| Variable | Description |
+|---|---|
+| `N8N_WEBHOOK_URL` | n8n webhook endpoint for listing submissions |
+| `AI_ASSISTANT_API_URL` | Backend URL for the AI assistant chat service |
+""")
+
+    return demo
+
+
+# ─────────────────────────────────────────────
+#  Entry point
+# ─────────────────────────────────────────────
+if __name__ == "__main__":
+    demo = build_ui()
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=int(os.getenv("PORT", 7860)),
+        share=False,
+    )
