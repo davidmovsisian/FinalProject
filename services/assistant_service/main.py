@@ -12,37 +12,6 @@ assistant_service = AssistantService()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     assistant_service.initialize()
-    
-    # from llama_cpp import Llama
-
-    # try:
-    #     llm = Llama(
-    #         model_path="/models/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf",
-    #         n_ctx=12288,
-    #         verbose=False,
-    #     )
-
-    #     print("LLM initialized successfully.")
-    #     response = llm.create_chat_completion(
-    #         messages=[
-    #             {
-    #                 "role": "system",
-    #                 "content": "You are a helpful Real Estate Assistant."
-    #             },
-    #             {
-    #                 "role": "user",
-    #                 "content": "What factors affect property valuation?"
-    #             }
-    #         ],
-    #         max_tokens=100,
-    #         temperature=0,
-    #     )
-
-    #     print("LLM response:", response)
-    #     print("LLM response content:", response["choices"][0]["message"]["content"])
-    # except Exception as e:
-    #     print("Error initializing LLM:", e)
-
     yield
 
 
