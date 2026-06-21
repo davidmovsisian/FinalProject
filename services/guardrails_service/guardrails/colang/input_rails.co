@@ -1,3 +1,4 @@
+# colang2
 define flow check property listing
   """
   Main input rail that validates whether the submitted text is a genuine
@@ -17,35 +18,9 @@ define flow check property listing
 
 define subflow topic_detection_prompt
   """
-  Invokes the LLM with the final Version 5 topic detection prompt to classify
+  Invokes the LLM with the topic detection prompt to classify
   whether the provided text is a genuine real estate property listing.
   Returns 'PASS' or 'FAIL: <reason>'.
   """
-  $prompt = """
-You are a real estate content safety classifier.
-
-TASK: Determine whether the text below is a genuine real estate or property listing
-written in English or Hebrew. A property listing must describe a specific property
-(apartment, house, office, land, villa, commercial space, etc.) and include at least
-two of the following: location, price, size/area, number of rooms, property features,
-contact details, or a call to action related to renting/buying/selling.
-
-RULES:
-1. Accept listings in English, Hebrew, or a natural mix of both languages.
-2. Reject if the text is primarily promotional spam (unrelated links, generic offers).
-3. Reject if the text contains hate speech, harassment, or offensive material.
-4. Reject if the text mentions real estate terms but is clearly off-topic (e.g., a
-   finance article, a news story, or a general blog post about property markets).
-5. Reject if the text is in a language other than English or Hebrew.
-6. Accept short but genuine listings (e.g., "2BR apartment in Tel Aviv, 5,000 NIS/mo").
-7. When in doubt, lean toward PASS for borderline genuine listings.
-
-TEXT TO CLASSIFY:
-{text}
-
-Respond with exactly one of:
-  PASS
-  FAIL: <one-sentence reason>
-"""
-  $result = execute llm_call(prompt=$prompt)
+  $result = execute llm_call(prompt="You are a real estate content safety classifier.\n\nTASK: Determine whether the text below is a genuine real estate or property listing written in English or Hebrew. A property listing must describe a specific property (apartment, house, office, land, villa, commercial space, etc.) and include at least two of the following: location, price, size/area, number of rooms, property features, contact details, or a call to action related to renting/buying/selling.\n\nRULES:\n1. Accept listings in English, Hebrew, or a natural mix of both languages.\n2. Reject if the text is primarily promotional spam (unrelated links, generic offers).\n3. Reject if the text contains hate speech, harassment, or offensive material.\n4. Reject if the text mentions real estate terms but is clearly off-topic (e.g., a finance article, a news story, or a general blog post about property markets).\n5. Reject if the text is in a language other than English or Hebrew.\n6. Accept short but genuine listings (e.g., '2BR apartment in Tel Aviv, 5,000 NIS/mo').\n7. When in doubt, lean toward PASS for borderline genuine listings.\n\nTEXT TO CLASSIFY:\n{text}\n\nRespond with exactly one of:\n  PASS\n  FAIL: <one-sentence reason>")
   return $result

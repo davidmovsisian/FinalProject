@@ -91,10 +91,10 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env               # fill in OPENAI_API_KEY
-uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
-The service will be available at `http://localhost:8002`.
+The service will be available at `http://localhost:8003`.
 
 ---
 
@@ -107,7 +107,7 @@ docker build -t guardrails-service ./services/guardrails_service
 
 **Run:**
 ```bash
-docker run -p 8002:8000 \
+docker run -p 8003:8000 \
   -e OPENAI_API_KEY=sk-... \
   -e GUARDRAILS_LLM_MODEL=gpt-4o-mini \
   guardrails-service
@@ -118,8 +118,8 @@ docker run -p 8002:8000 \
 ## EC2 Deployment
 
 1. Copy the service directory to the EC2 instance.
-2. Build and run the Docker container (see above), mapping port `8002` on the host to `8000` in the container.
-3. In the EC2 Security Group, open inbound TCP port `8002` for the sources that need access (e.g., the orchestration layer's IP range or VPC CIDR).
+2. Build and run the Docker container (see above), mapping port `8003` on the host to `8000` in the container.
+3. In the EC2 Security Group, open inbound TCP port `8003` for the sources that need access (e.g., the orchestration layer's IP range or VPC CIDR).
 
 ---
 
@@ -128,7 +128,7 @@ docker run -p 8002:8000 \
 ### Check a valid property listing input
 
 ```bash
-curl -X POST http://localhost:8002/check/input \
+curl -X POST http://localhost:8003/check/input \
   -H "Content-Type: application/json" \
   -d '{"text": "3-bedroom apartment in Tel Aviv, 2nd floor, 85 sqm, asking 2,500,000 NIS. Contact: 050-1234567"}'
 ```
@@ -141,7 +141,7 @@ Expected response:
 ### Check spam input
 
 ```bash
-curl -X POST http://localhost:8002/check/input \
+curl -X POST http://localhost:8003/check/input \
   -H "Content-Type: application/json" \
   -d '{"text": "Click here now to win a free apartment! Limited offer!"}'
 ```
@@ -154,7 +154,7 @@ Expected response:
 ### Check a clean AI-generated output
 
 ```bash
-curl -X POST http://localhost:8002/check/output \
+curl -X POST http://localhost:8003/check/output \
   -H "Content-Type: application/json" \
   -d '{"text": "Based on comparable sales in the area, this 3BR apartment is estimated to be worth around 2,400,000–2,600,000 NIS."}'
 ```
@@ -167,7 +167,7 @@ Expected response:
 ### Check a report with a false legal claim
 
 ```bash
-curl -X POST http://localhost:8002/check/output \
+curl -X POST http://localhost:8003/check/output \
   -H "Content-Type: application/json" \
   -d '{"text": "This property has a guaranteed freehold title registered at the land registry."}'
 ```
@@ -233,7 +233,7 @@ decisions, is documented in `guardrails/prompts/topic_detection.txt` and
 ### Validate a PASS case (input)
 
 ```bash
-curl -s -X POST http://localhost:8002/check/input \
+curl -s -X POST http://localhost:8003/check/input \
   -H "Content-Type: application/json" \
   -d '{"text": "Spacious 4BR villa in Herzliya Pituach with a private pool, 350 sqm, priced at 6,500,000 NIS."}' \
   | python3 -m json.tool
@@ -244,7 +244,7 @@ Expected: `"passed": true`
 ### Validate a FAIL case (output)
 
 ```bash
-curl -s -X POST http://localhost:8002/check/output \
+curl -s -X POST http://localhost:8003/check/output \
   -H "Content-Type: application/json" \
   -d '{"text": "This property is ISO 9001 certified and guaranteed to sell for $750,000."}' \
   | python3 -m json.tool
@@ -255,5 +255,5 @@ Expected: `"passed": false`
 ### Health check
 
 ```bash
-curl http://localhost:8002/health
+curl http://localhost:8003/health
 ```

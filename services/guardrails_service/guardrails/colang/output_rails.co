@@ -1,3 +1,4 @@
+# colang2
 define flow check output safety
   """
   Main output rail that audits an AI-generated property report to ensure it
@@ -11,72 +12,11 @@ define flow check output safety
   else
     bot say "PASS"
 
-define flow detect legal claim fabrication
-  """
-  Detects false or unverifiable legal claims in AI-generated property reports.
-  Examples: 'guaranteed freehold title', 'legally verified price'.
-  Triggers FAIL with reason 'false legal claim detected'.
-  """
-  if $bot_message contains "guaranteed freehold" or $bot_message contains "legally verified price"
-    bot say "FAIL: false legal claim detected"
-    stop
-
-define flow detect price guarantee
-  """
-  Detects invented or guaranteed prices not supported by evidence.
-  Examples: 'guaranteed to sell for $X', 'will definitely fetch $X'.
-  Triggers FAIL with reason 'fabricated price guarantee detected'.
-  """
-  if $bot_message contains "guaranteed to sell" or $bot_message contains "will definitely fetch"
-    bot say "FAIL: fabricated price guarantee detected"
-    stop
-
-define flow detect certification fabrication
-  """
-  Detects fabricated or unverified certifications mentioned in AI-generated reports.
-  Examples: 'ISO 9001 certified building', 'LEED certified' when not verified.
-  Triggers FAIL with reason 'fabricated certification detected'.
-  """
-  if $bot_message contains "ISO 9001 certified" or $bot_message contains "LEED certified"
-    bot say "FAIL: fabricated certification detected — certification not verified"
-    stop
-
 define subflow output_auditor_prompt
   """
-  Invokes the LLM with the final Version 5 output auditor prompt to verify
-  that the AI-generated property report is free of false claims and fabrications.
+  Invokes the LLM with the output auditor prompt to verify that the
+  AI-generated property report is free of false claims and fabrications.
   Returns 'PASS' or 'FAIL: <reason>'.
   """
-  $prompt = """
-You are a real estate AI output safety auditor.
-
-TASK: Review the AI-generated property report below and determine whether it
-contains any of the following prohibited content:
-
-PROHIBITED CONTENT:
-1. FALSE LEGAL CLAIMS — statements that imply legal guarantees or verified legal
-   status without evidence (e.g., "guaranteed freehold title", "legally verified
-   ownership", "court-certified clear title").
-2. FABRICATED PRICE GUARANTEES — invented or unsupported price predictions
-   presented as fact (e.g., "guaranteed to sell for $500,000", "will fetch at
-   least $X", "price is guaranteed to rise by X%").
-3. INVENTED CERTIFICATIONS — certifications or accreditations stated as fact
-   without any basis (e.g., "ISO 9001 certified building", "LEED Platinum certified",
-   "energy class A certified" when the report has no cited source for this).
-
-RULES:
-- Minor hedged opinions are acceptable (e.g., "estimated value around $X", "likely
-  freehold based on listing data").
-- Only flag content that presents an unverifiable claim as established fact.
-- If multiple issues are found, list only the most critical one as the FAIL reason.
-- When in doubt, prefer PASS over a false positive.
-
-TEXT TO AUDIT:
-{text}
-
-Respond with exactly one of:
-  PASS
-  FAIL: <one-sentence reason describing the specific prohibited content found>
-"""
-  $result = execute llm_call(prompt=$prompt)
+  $result = execute llm_call(prompt="You are a real estate AI output safety auditor.\n\nTASK: Review the AI-generated property report below and determine whether it contains any of the following prohibited content:\n\nPROHIBITED CONTENT:\n1. FALSE LEGAL CLAIMS -- statements that imply legal guarantees or verified legal status without evidence (e.g., 'guaranteed freehold title', 'legally verified ownership', 'court-certified clear title').\n2. FABRICATED PRICE GUARANTEES -- invented or unsupported price predictions presented as fact (e.g., 'guaranteed to sell for $500,000', 'will fetch at least $X', 'price is guaranteed to rise by X%').\n3. INVENTED CERTIFICATIONS -- certifications or accreditations stated as fact without any basis (e.g., 'ISO 9001 certified building', 'LEED Platinum certified', 'energy class A certified' when the report has no cited source for this).\n\nRULES:\n- Minor hedged opinions are acceptable (e.g., 'estimated value around $X', 'likely freehold based on listing data').\n- Only flag content that presents an unverifiable claim as established fact.\n- If multiple issues are found, list only the most critical one as the FAIL reason.\n- When in doubt, prefer PASS over a false positive.\n\nTEXT TO AUDIT:\n{text}\n\nRespond with exactly one of:\n  PASS\n  FAIL: <one-sentence reason describing the specific prohibited content found>")
   return $result
