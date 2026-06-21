@@ -309,10 +309,10 @@ def build_ui():
             #  TAB 1 — Property Submission
             # ─────────────────────────────────────────
             with gr.TabItem("📝 Submit Listing"):
-                gr.Markdown(
-                    "Fill in the property details below and click **Submit Listing** to start the AI triage pipeline.",
-                    elem_classes="card",
-                )
+                # gr.Markdown(
+                #     "Fill in the property details below and click **Submit Listing** to start the AI triage pipeline.",
+                #     elem_classes="card",
+                # )
 
                 with gr.Row():
                     with gr.Column(scale=3):
@@ -343,17 +343,17 @@ def build_ui():
                             elem_id="submit-btn",
                         )
 
-                    with gr.Column(scale=2):
-                        gr.HTML("""
-                        <div id="info-box">
-                          <strong>ℹ️ How it works</strong><br><br>
-                          1. Your submission is validated by the <b>Guardrails</b> service.<br><br>
-                          2. An AI extractor identifies property type, rooms, price, and key features.<br><br>
-                          3. Each image is classified by room type and given a <b>condition score (1–5)</b>.<br><br>
-                          4. Similar past listings are retrieved from the <b>knowledge base</b>.<br><br>
-                          5. A final <b>listing brief</b> is generated and the listing is routed to the correct team.
-                        </div>
-                        """)
+                    # with gr.Column(scale=2):
+                    #     gr.HTML("""
+                    #     <div id="info-box">
+                    #       <strong>ℹ️ How it works</strong><br><br>
+                    #       1. Your submission is validated by the <b>Guardrails</b> service.<br><br>
+                    #       2. An AI extractor identifies property type, rooms, price, and key features.<br><br>
+                    #       3. Each image is classified by room type and given a <b>condition score (1–5)</b>.<br><br>
+                    #       4. Similar past listings are retrieved from the <b>knowledge base</b>.<br><br>
+                    #       5. A final <b>listing brief</b> is generated and the listing is routed to the correct team.
+                    #     </div>
+                    #     """)
 
                 # Results area
                 with gr.Row():
@@ -385,7 +385,6 @@ def build_ui():
                             label="Real Estate AI Assistant",
                             height=480,
                             elem_id="chat-box",
-                            bubble_full_width=False,
                         )
                         with gr.Row():
                             chat_input = gr.Textbox(
@@ -409,19 +408,19 @@ def build_ui():
                             label="Example questions",
                         )
 
-                    with gr.Column(scale=1):
-                        gr.HTML("""
-                        <div id="info-box">
-                          <strong>🤖 AI Assistant</strong><br><br>
-                          Your knowledgeable real-estate assistant is ready to help.<br><br>
-                          Ask about:<br>
-                          • Market trends &amp; valuations<br>
-                          • Property types &amp; features<br>
-                          • Investment advice<br>
-                          • Listing best practices<br><br>
-                          <em>The assistant stays on real-estate topics and will politely decline off-topic requests.</em>
-                        </div>
-                        """)
+                    # with gr.Column(scale=1):
+                    #     gr.HTML("""
+                    #     <div id="info-box">
+                    #       <strong>🤖 AI Assistant</strong><br><br>
+                    #       Your knowledgeable real-estate assistant is ready to help.<br><br>
+                    #       Ask about:<br>
+                    #       • Market trends &amp; valuations<br>
+                    #       • Property types &amp; features<br>
+                    #       • Investment advice<br>
+                    #       • Listing best practices<br><br>
+                    #       <em>The assistant stays on real-estate topics and will politely decline off-topic requests.</em>
+                    #     </div>
+                    #     """)
 
                 send_btn.click(
                     fn=chat_with_assistant,
@@ -439,10 +438,10 @@ def build_ui():
             # ─────────────────────────────────────────
             with gr.TabItem("⚙️ Configuration"):
                 gr.Markdown("### Service Configuration")
-                gr.Markdown(
-                    "Configure the URLs for backend services. Changes take effect immediately without restarting.",
-                    elem_classes="card",
-                )
+                # gr.Markdown(
+                #     "Configure the URLs for backend services. Changes take effect immediately without restarting.",
+                #     elem_classes="card",
+                # )
 
                 with gr.Column(elem_id="config-card"):
                     n8n_url_input = gr.Textbox(
@@ -467,16 +466,16 @@ def build_ui():
                     outputs=[save_status],
                 )
 
-                gr.Markdown("""---
-### Environment Variables
+#                 gr.Markdown("""---
+# ### Environment Variables
 
-You can also pre-set configuration via environment variables before launching:
+# You can also pre-set configuration via environment variables before launching:
 
-| Variable | Description |
-|---|---|
-| `N8N_WEBHOOK_URL` | n8n webhook endpoint for listing submissions |
-| `AI_ASSISTANT_API_URL` | Backend URL for the AI assistant chat service |
-""")
+# | Variable | Description |
+# |---|---|
+# | `N8N_WEBHOOK_URL` | n8n webhook endpoint for listing submissions |
+# | `AI_ASSISTANT_API_URL` | Backend URL for the AI assistant chat service |
+# """)
 
     return demo
 
