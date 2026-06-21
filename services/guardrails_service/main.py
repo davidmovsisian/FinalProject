@@ -57,6 +57,9 @@ async def lifespan(_: FastAPI):
         from nemoguardrails import LLMRails, RailsConfig
 
         config = RailsConfig.from_path(str(GUARDRAILS_DIR))
+        # Both endpoints use the same config.yml which activates both input and
+        # output rails.  Separate LLMRails instances give each endpoint its own
+        # independent conversation context so state never bleeds between calls.
         _rails_input = LLMRails(config)
         _rails_output = LLMRails(config)
         logger.info("NeMo Guardrails loaded from %s (model: %s)", GUARDRAILS_DIR, LLM_MODEL)

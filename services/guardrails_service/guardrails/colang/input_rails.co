@@ -3,6 +3,9 @@ define flow check property listing
   Main input rail that validates whether the submitted text is a genuine
   real estate / property listing written in English or Hebrew.
   Rejects spam, offensive content, and off-topic submissions.
+  All classification logic is delegated to the LLM via the topic detection prompt,
+  which handles spam detection, offensive content, off-topic detection, and language
+  validation in a single structured call.
   """
   $verdict = execute topic_detection_prompt(text=$user_message)
   if $verdict startswith "FAIL"
@@ -11,43 +14,6 @@ define flow check property listing
     stop
   else
     bot say "PASS"
-
-define flow detect spam
-  """
-  Detects spam patterns in property listing submissions.
-  Triggers FAIL with reason 'spam detected' when spam indicators are found.
-  """
-  if $user_message contains "click here" or $user_message contains "buy now"
-    bot say "FAIL: spam detected"
-    stop
-
-define flow detect offensive content
-  """
-  Detects offensive or inappropriate content in submissions.
-  Triggers FAIL with reason 'offensive content detected'.
-  """
-  if $user_message contains offensive language
-    bot say "FAIL: offensive content detected"
-    stop
-
-define flow detect off topic
-  """
-  Detects submissions that are not related to property or real estate.
-  Triggers FAIL with reason 'not a property listing'.
-  """
-  if not $user_message contains property terms
-    bot say "FAIL: not a property listing"
-    stop
-
-define flow check language
-  """
-  Verifies that the submission is written in English or Hebrew.
-  Triggers FAIL with reason 'unsupported language' for other languages.
-  """
-  $lang = execute detect_language(text=$user_message)
-  if $lang != "en" and $lang != "he"
-    bot say "FAIL: unsupported language — only English and Hebrew are accepted"
-    stop
 
 define subflow topic_detection_prompt
   """
