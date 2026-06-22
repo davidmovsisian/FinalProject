@@ -1,9 +1,7 @@
 import logging
 import os
-import re
-from contextlib import asynccontextmanager
-from pathlib import Path
-
+import json
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -16,11 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("guardrails_service")
 
-GUARDRAILS_DIR = Path(__file__).parent / "guardrails"
 LLM_MODEL = os.getenv("GUARDRAILS_LLM_MODEL", "gpt-4o-mini")
-
-_rails_input = None
-_rails_output = None
 
 
 class CheckRequest(BaseModel):
@@ -32,50 +26,25 @@ class CheckResponse(BaseModel):
     reason: str = ""
     safe_text: str = ""
 
-
-def _parse_verdict(response: str) -> tuple[bool, str]:
-    """Parse a PASS / FAIL: <reason> verdict string from the LLM response."""
-    text = response.strip()
-    if text.upper().startswith("PASS"):
-        return True, ""
-    match = re.match(r"^FAIL[:\s]+(.+)$", text, re.IGNORECASE | re.DOTALL)
-    if match:
-        return False, match.group(1).strip()
-    # If the response doesn't match either pattern, treat as fail-safe
-    return False, f"Unexpected guardrails response: {text[:200]}"
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    global _rails_input, _rails_output
-
-    api_key = os.getenv("OPENAI_API_KEY", "")
-    if not api_key:
-        logger.warning("OPENAI_API_KEY is not set — guardrails LLM calls will fail")
-
+async def _call_llm(prompt: str) -> str:
     try:
-        from nemoguardrails import LLMRails, RailsConfig
-
-        config = RailsConfig.from_path(str(GUARDRAILS_DIR))
-        # Both endpoints use the same config.yml which activates both input and
-        # output rails.  Separate LLMRails instances give each endpoint its own
-        # independent conversation context so state never bleeds between calls.
-        _rails_input = LLMRails(config)
-        _rails_output = LLMRails(config)
-        logger.info("NeMo Guardrails loaded from %s (model: %s)", GUARDRAILS_DIR, LLM_MODEL)
-    except Exception as exc:
-        logger.error("Failed to load NeMo Guardrails: %s", exc)
-        _rails_input = None
-        _rails_output = None
-
-    yield
+        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = await client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=200,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error("LLM call failed: %s", e)
+        raise
 
 
 app = FastAPI(
     title="Guardrails Service",
     description="Content safety guardrails for real estate property listings and AI-generated reports.",
     version="1.0.0",
-    lifespan=lifespan,
 )
 
 
@@ -83,38 +52,51 @@ app = FastAPI(
 def health() -> dict:
     return {
         "status": "ok",
-        "rails_loaded": _rails_input is not None,
+        "openai_configured": bool(os.getenv("OPENAI_API_KEY", "")),
         "llm_model": LLM_MODEL,
     }
 
 
 @app.post("/check/input", response_model=CheckResponse)
 async def check_input(request: CheckRequest) -> CheckResponse:
-    """
-    Validate that the submitted text is a genuine real estate / property listing
-    written in English or Hebrew. Rejects spam, offensive content, and off-topic
-    submissions.
-    """
     text = request.text.strip()
     if not text:
         return CheckResponse(passed=False, reason="Empty text submitted.", safe_text="")
+    prompt=f"""You are a property listing validator.
 
-    if _rails_input is None:
-        logger.error("Input rails not loaded; returning fail-safe response")
-        return CheckResponse(passed=False, reason="Guardrails service unavailable.", safe_text="")
+TASK: Determine if the submitted text is a genuine property listing in English or Hebrew.
 
+CHECK FOR:
+- Spam, off-topic content, or promotional material not about a specific property
+- Offensive, hateful, or sexually explicit content
+- Non-property real estate content (mortgage rates, investment tips, etc.)
+- Proper language (English or Hebrew)
+
+RULES:
+- Accept descriptions of specific properties (apartments, houses, commercial space)
+- Accept reasonable property-related details (price, location, features)
+- Reject general information not about a specific listing
+- Prefer PASS for legitimate property listings
+
+TEXT TO VALIDATE:
+{text}
+
+Respond ONLY in JSON format with exactly these fields:
+{{
+    "passed": "true" or "false",
+    "reason": "If FAIL, a one-sentence reason. Empty if PASS.",
+    "safe_text": "If PASS, return the original text. If FAIL, return an empty string."
+}}
+"""
     try:
         logger.info("Checking input (length=%d)", len(text))
-        response = await _rails_input.generate_async(
-            messages=[{"role": "user", "content": text}]
-        )
-        verdict_text = response if isinstance(response, str) else response.get("content", "")
-        passed, reason = _parse_verdict(verdict_text)
-        logger.info("Input check result: passed=%s reason=%s", passed, reason)
+        response = await _call_llm(prompt)
+        print("LLM response:", response)
+        verdict = json.loads(response.strip())
         return CheckResponse(
-            passed=passed,
-            reason=reason,
-            safe_text=text if passed else "",
+            passed=verdict["passed"] == "true",
+            reason=verdict["reason"],
+            safe_text=verdict["safe_text"]
         )
     except Exception as exc:
         logger.exception("Error during input check: %s", exc)
@@ -123,30 +105,52 @@ async def check_input(request: CheckRequest) -> CheckResponse:
 
 @app.post("/check/output", response_model=CheckResponse)
 async def check_output(request: CheckRequest) -> CheckResponse:
-    """
-    Validate that an AI-generated property report does not contain false legal
-    claims, fabricated prices, or invented certifications.
-    """
     text = request.text.strip()
     if not text:
         return CheckResponse(passed=False, reason="Empty text submitted.", safe_text="")
 
-    if _rails_output is None:
-        logger.error("Output rails not loaded; returning fail-safe response")
-        return CheckResponse(passed=False, reason="Guardrails service unavailable.", safe_text="")
+    prompt =f"""You are a real estate AI output safety auditor.
+
+TASK: Review the AI-generated property report below and determine whether it
+contains any of the following prohibited content:
+
+PROHIBITED CONTENT:
+1. FALSE LEGAL CLAIMS — statements that imply legal guarantees or verified legal
+   status without evidence (e.g., "guaranteed freehold title", "legally verified
+   ownership", "court-certified clear title").
+2. FABRICATED PRICE GUARANTEES — invented or unsupported price predictions
+   presented as fact (e.g., "guaranteed to sell for $500,000", "will fetch at
+   least $X", "price is guaranteed to rise by X%").
+3. INVENTED CERTIFICATIONS — certifications or accreditations stated as fact
+   without any basis (e.g., "ISO 9001 certified building", "LEED Platinum certified",
+   "energy class A certified" when the report has no cited source for this).
+
+RULES:
+- Minor hedged opinions are acceptable (e.g., "estimated value around $X", "likely
+  freehold based on listing data").
+- Only flag content that presents an unverifiable claim as established fact.
+- If multiple issues are found, list only the most critical one as the FAIL reason.
+- When in doubt, prefer PASS over a false positive.
+
+TEXT TO AUDIT:
+{text}
+
+Respond ONLY in JSON format with exactly these fields:
+{{
+    "passed": "true" or "false",
+    "reason": "If FAIL, a one-sentence reason. Empty if PASS.",
+    "safe_text": "If PASS, return the original text. If FAIL, return an empty string."
+}}"""
 
     try:
         logger.info("Checking output (length=%d)", len(text))
-        response = await _rails_output.generate_async(
-            messages=[{"role": "user", "content": text}]
-        )
-        verdict_text = response if isinstance(response, str) else response.get("content", "")
-        passed, reason = _parse_verdict(verdict_text)
-        logger.info("Output check result: passed=%s reason=%s", passed, reason)
+        response = await _call_llm(prompt)
+        print("LLM response:", response)
+        verdict = json.loads(response.strip())
         return CheckResponse(
-            passed=passed,
-            reason=reason,
-            safe_text=text if passed else "",
+            passed=verdict["passed"] == "true",
+            reason=verdict["reason"],
+            safe_text=verdict["safe_text"]
         )
     except Exception as exc:
         logger.exception("Error during output check: %s", exc)

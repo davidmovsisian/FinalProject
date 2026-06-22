@@ -37,7 +37,7 @@ class AssistantService:
         else:
             self._llm_error = "ASSISTANT_LLM_MODEL_PATH is not set"
 
-    def general_answer(self, query: str) -> str:
+    def general_answer(self, message: str, history: list[dict] | None = None) -> str:
         SYSTEM_PROMPT = """
             You are a knowledgeable and professional Real Estate Assistant.
 
@@ -67,20 +67,21 @@ class AssistantService:
                 "LLM generation is unavailable. "
                 f"Reason: {self._llm_error or 'unknown error'}."
             )
-        print(f"Generating answer for query: {query}")
-        response = self._llm.create_chat_completion(
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"{SYSTEM_PROMPT}"
-                },
-                {
-                    "role": "user",
-                    "content": query
-                }
-            ]
-        )
+        
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT}]
+        if history:
+            for turn in history:
+                role = turn.get("role", "")
+                content = turn.get("content", "")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": message})
+
+        print(f"Generating answer for message: {message}")
+        response = self._llm.create_chat_completion(messages=messages)
 
         answer = response["choices"][0]["message"]["content"]
         print(f"Generated answer: {answer}")
+        
         return answer

@@ -58,6 +58,62 @@ services:
       - "8002:8000"
     restart: unless-stopped
     
+  guardrails_service:
+    build:
+      context: ./services/guardrails_service
+    container_name: guardrails_service
+    env_file:
+      - ./services/guardrails_service/.env
+    ports:
+      - "8003:8000"
+    restart: unless-stopped
+
+  gradio_webui:
+    build:
+      context: ./webui
+    container_name: gradio_webui
+    depends_on:
+      - assistant_service
+      - guardrails_service
+    ports:
+      - "7860:7860"
+    env_file:
+      - ./webui/.env
+    restart: unless-stopped
+  
+  n8n_service:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    restart: unless-stopped
+    user: root
+    ports:
+      - "5678:5678"
+      - "5679:5679"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    environment:
+      - N8N_HOST=0.0.0.0
+      - NODE_ENV=production
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_RUNNERS_MODE=external
+      - N8N_RUNNERS_AUTH_TOKEN=d4aed832c63413141fa632594abcd5a2a6d0c56d38364a4faf6b829bbf882fa6
+      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+
+  task-runners:
+    build:
+      context: .
+      dockerfile: Dockerfile.runners
+    container_name: n8n-runners
+    restart: unless-stopped
+    environment:
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n_service:5679
+      - N8N_RUNNERS_AUTH_TOKEN=d4aed832c63413141fa632594abcd5a2a6d0c56d38364a4faf6b829bbf882fa6
+    depends_on:
+      n8n_service:
+        condition: service_started
+  
 volumes:
   rag_chroma:
   rag_models:
+  n8n_data:
+  

@@ -1,0 +1,12 @@
+FROM n8nio/runners:latest
+
+USER root
+
+# Install extra Python packages into the runner's venv
+# COPY requirements.txt /tmp/requirements.txt
+RUN cd /opt/runners/task-runner-python && uv pip install --no-cache-dir pymupdf python-docx
+
+# Copy allowlist config
+COPY n8n-task-runners.json /etc/n8n-task-runners.json
+
+USER runner

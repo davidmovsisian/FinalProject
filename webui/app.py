@@ -6,8 +6,8 @@ import os
 # ─────────────────────────────────────────────
 #  Configuration (read from env or defaults)
 # ─────────────────────────────────────────────
-N8N_WEBHOOK_URL_DEFAULT = os.getenv("N8N_WEBHOOK_URL", "")
-AI_ASSISTANT_API_URL_DEFAULT = os.getenv("AI_ASSISTANT_API_URL", "http://localhost:8001/chat")
+N8N_WEBHOOK_URL_DEFAULT = os.getenv("N8N_WEBHOOK_URL", "http://n8n:5678/webhook-test/real-estate-assistant")
+AI_ASSISTANT_API_URL_DEFAULT = os.getenv("AI_ASSISTANT_API_URL", "http://assistant_service:8001/general_answer")
 
 # ─────────────────────────────────────────────
 #  State helpers
@@ -46,6 +46,7 @@ def chat_with_assistant(message: str, history: list):
         response = requests.post(api_url, json=payload, timeout=60)
         response.raise_for_status()
         data = response.json()
+        print(f"Data:{data}")
         reply = data.get("response") or data.get("message") or data.get("answer") or str(data)
     except requests.exceptions.ConnectionError:
         reply = "⚠️ Could not connect to the AI assistant service. Please check the API URL in Configuration."

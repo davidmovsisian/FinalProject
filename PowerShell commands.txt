@@ -63,3 +63,13 @@ $response = Invoke-RestMethod `
   -Body $body
 
 $response | ConvertTo-Json -Depth 20
+
+-----------------------------------------
+GurdRails.
+ Invoke-RestMethod -Method Post -Uri "http://localhost:8003/check/input" `
+>>   -ContentType "application/json" `
+>>   -Body '{"text": "3-bedroom apartment in Tel Aviv, 2nd floor, 85 sqm, asking 2,500,000 NIS. Contact: 050-1234567"}'
+
+Invoke-RestMethod -Method Post -Uri "http://localhost:8003/check/output" `
+>>   -ContentType "application/json" `
+>>   -Body '{"text": "Based on comparable sales in the area, this 3BR apartment is estimated to be worth around 2,400,000–2,600,000 NIS."}'
