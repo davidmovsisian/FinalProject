@@ -7,7 +7,7 @@ import os
 #  Configuration (read from env or defaults)
 # ─────────────────────────────────────────────
 N8N_WEBHOOK_URL_DEFAULT = os.getenv("N8N_WEBHOOK_URL", "http://n8n:5678/webhook-test/real-estate-assistant")
-AI_ASSISTANT_API_URL_DEFAULT = os.getenv("AI_ASSISTANT_API_URL", "http://assistant_service:8001/general_answer")
+AI_ASSISTANT_API_URL_DEFAULT = os.getenv("AI_ASSISTANT_API_URL", "http://assistant_service:8000/general_answer")
 
 # ─────────────────────────────────────────────
 #  State helpers
@@ -34,16 +34,25 @@ def chat_with_assistant(message: str, history: list):
     api_url = _config.get("ai_assistant_api_url", "").strip()
 
     if not api_url:
-        history = history + [[message, "⚠️ AI Assistant API URL is not configured. Please set it in the Configuration tab."]]
+        history = history + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": "⚠️ AI Assistant API URL is not configured. Please set it in the Configuration tab."},
+        ]
         return history, ""
 
     try:
+        # Gradio 6 passes history as a list of {"role": ..., "content": ...} dicts
         payload = {
             "message": message,
-            "history": [{"role": "user" if i % 2 == 0 else "assistant", "content": m}
-                        for turn in history for i, m in enumerate(turn)],
+            "history": [
+                {
+                    "role": m["role"], "content": m["content"]} 
+                    for m in history
+                    if m.get("role") in ("user", "assistant") and m.get("content") #filter out any invalid entries
+                ],
         }
-        response = requests.post(api_url, json=payload, timeout=60)
+        print(f"Sending request to AI assistant API at {api_url} with payload: {payload}")
+        response = requests.post(api_url, json=payload, timeout=180)
         response.raise_for_status()
         data = response.json()
         print(f"Data:{data}")
@@ -55,7 +64,10 @@ def chat_with_assistant(message: str, history: list):
     except Exception as exc:
         reply = f"⚠️ Error: {exc}"
 
-    history = history + [[message, reply]]
+    history = history + [
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": reply},
+    ]
     return history, ""
 
 
@@ -98,7 +110,7 @@ def submit_listing(
     }
 
     try:
-        response = requests.post(webhook_url, json=payload, timeout=120)
+        response = requests.post(webhook_url, json=payload, timeout=180)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.ConnectionError:
@@ -293,7 +305,7 @@ body, .gradio-container {
 """
 
 def build_ui():
-    with gr.Blocks(css=CUSTOM_CSS, title="AI Property Triage System") as demo:
+    with gr.Blocks(title="AI Property Triage System") as demo:
 
         # ── Header ──────────────────────────────────
         gr.HTML("""
@@ -490,4 +502,5 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=int(os.getenv("PORT", 7860)),
         share=False,
+        css=CUSTOM_CSS,
     )

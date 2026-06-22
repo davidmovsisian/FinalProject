@@ -3,20 +3,42 @@ from fastapi import FastAPI
 from assistant_service import AssistantService
 from config import settings
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Any, List, Optional
 
 assistant_service = AssistantService()
 
+
+def _to_str(content: Any) -> str:
+    """Normalize Gradio content to a plain string.
+    Gradio 6 can send content as a string or as a list of content blocks
+    (multimodal format). Extract text from whichever form arrives.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        return " ".join(parts)
+    return str(content) if content is not None else ""
+
+
 class HistoryMessage(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
+    role: str            # "user" or "assistant"
+    content: Any = None  # str normally; list of blocks in Gradio 6 multimodal
+
 
 class ChatRequest(BaseModel):
     history: Optional[List[HistoryMessage]] = None
-    message: str
+    message: Optional[str] = None
+
 
 class ChatResponse(BaseModel):
     response: str
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -35,9 +57,19 @@ def health() -> dict[str, object]:
         "llm_error": assistant_service.llm_error,
     }
 
+
 @app.post("/general_answer", response_model=ChatResponse)
 def general_answer(request: ChatRequest) -> ChatResponse:
-    history =[msg.model_dump() for msg in (request.history or [])]
+    # Normalize every history entry's content to a plain string and drop empties
+    history = [
+        {"role": msg.role, "content": _to_str(msg.content)}
+        for msg in (request.history or [])
+        if msg.role in ("user", "assistant") and msg.content
+    ]
+    print(
+        f"Received request: message={request.message}, "
+        f"history=[{', '.join([h['role'] + ':' + h['content'][:40] for h in history])}]"
+    )
     answer = assistant_service.general_answer(
         message=request.message,
         history=history,

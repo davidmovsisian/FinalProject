@@ -79,6 +79,7 @@ class AssistantService:
         messages.append({"role": "user", "content": message})
 
         print(f"Generating answer for message: {message}")
+        print(f"With history: {history}")
         response = self._llm.create_chat_completion(messages=messages)
 
         answer = response["choices"][0]["message"]["content"]
