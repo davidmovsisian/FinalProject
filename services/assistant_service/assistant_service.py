@@ -86,3 +86,48 @@ class AssistantService:
         print(f"Generated answer: {answer}")
         
         return answer
+    
+    def generate_insight(self, query_listing: PropertyListing, similar_listings: list[SimilarListing]) -> str:
+        if not similar_listings:
+            return "No similar listings were found, so no grounded insight can be generated."
+
+        if not self._llm:
+            listing_ids = ", ".join(item.id for item in similar_listings)
+            return (
+                "LLM generation is unavailable. "
+                f"Reason: {self._llm_error or 'unknown error'}. "
+                f"Retrieved similar listings: {listing_ids}."
+            )
+
+        context = "\n".join(
+            f"- {item.id}: {listing_to_text(item.listing)} (distance={item.distance:.4f})"
+            for item in similar_listings
+        )
+
+        prompt = PromptTemplate.from_template(
+            """
+You are a real-estate assistant.
+Use only the provided similar listings context to produce a concise insight.
+Do not fabricate facts. If context is insufficient, explicitly say so.
+Always cite the listing IDs that informed your insight.
+
+Input listing:
+{input_listing}
+
+Similar listings:
+{context}
+
+Return 2-4 sentences.
+""".strip()
+        )
+
+        response = self._llm.invoke(
+            prompt.format(input_listing=listing_to_text(query_listing), context=context)
+        )
+        return str(response).strip()
+
+    def collection_size(self) -> int:
+        try:
+            return len(self._vectorstore.get()["ids"])
+        except Exception:
+            return 0

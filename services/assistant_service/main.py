@@ -2,12 +2,24 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from assistant_service import AssistantService
 from config import settings
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 
 assistant_service = AssistantService()
 
-
+class RoomCondition(BaseModel):
+    type: str = Field(min_length=1)
+    condition_score: int = Field(ge=1, le=5)
+    confidence: float = Field(ge=0, le=1)
+    
+class PropertyListing(BaseModel):
+    property_type: str = Field(min_length=1)
+    location: str = Field(min_length=1)
+    price: str = Field(min_length=1)
+    rooms_number: int = Field(ge=0)
+    features: list[str] = Field(default_factory=list)
+    conditions: list[RoomCondition] = Field(default_factory=list)
+    
 def _to_str(content: Any) -> str:
     """Normalize Gradio content to a plain string.
     Gradio 6 can send content as a string or as a list of content blocks
@@ -75,3 +87,15 @@ def general_answer(request: ChatRequest) -> ChatResponse:
         history=history,
     )
     return ChatResponse(response=answer)
+
+@app.post("/create-insight", response_model=InsightResponse)
+def create_insight_endpoint(request: InsightRequest) -> InsightResponse:
+    try:
+        listing = request.to_listing()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    similar = rag_service.retrieve(listing, k=settings.top_k)
+    insight = rag_service.generate_insight(listing, similar)
+    rag_service.add_vector_store(listing)
+    return InsightResponse(similar_listings=similar, insight=insight)
