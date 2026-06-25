@@ -1,11 +1,8 @@
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
 
-
 load_dotenv()
-
 
 class Settings:
     def __init__(self) -> None:
@@ -22,6 +19,8 @@ class Settings:
         self.embedding_model_path = os.getenv("RAG_EMBEDDING_MODEL_PATH")
 
         self.top_k = int(os.getenv("TOP_K", "3"))
+
+        self.create_insight_url = os.getenv("CREATE_INSIGHT_URL", "http://assistant_service:8000/create-insight")
 
     def chroma_dir(self) -> Path:
         return Path(self.chroma_path)

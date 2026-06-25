@@ -1,14 +1,11 @@
 import json
 import re
 from pathlib import Path
-
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-
 from config import settings
 from models import PropertyListing, SimilarListing
 from utils import listing_to_text, parse_conditions
-
 
 class RAGService:
     def __init__(self) -> None:

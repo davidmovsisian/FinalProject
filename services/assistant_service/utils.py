@@ -1,4 +1,4 @@
-from models import PropertyListing, RoomCondition
+from models import PropertyListing
 import json
 
 def listing_to_text(listing: PropertyListing) -> str:
@@ -24,17 +24,3 @@ def conditions_to_text(conditions: list[dict]) -> str:
         )
         for condition in conditions
     )
-
-def parse_conditions(conditions: object) -> list[RoomCondition]:
-    if isinstance(conditions, list):
-        return conditions
-
-    if isinstance(conditions, str):
-        try:
-            parsed = json.loads(conditions)
-            if isinstance(parsed, list):
-                return parsed
-        except json.JSONDecodeError:
-            return []
-
-    return []

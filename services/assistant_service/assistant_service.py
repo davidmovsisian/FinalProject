@@ -1,9 +1,8 @@
-from dataclasses import Field
 from pathlib import Path
-
-from pydantic import BaseModel
 from llama_cpp import Llama
 from config import settings
+from models import PropertyListing, SimilarListing
+from utils import listing_to_text
 
 class AssistantService:
     def __init__(self) -> None:
@@ -90,44 +89,48 @@ class AssistantService:
         
         return answer
     
-    def generate_insight(self, listing: PropertyListing, similar_listings: list[SimilarListing]) -> str:
+    def generate_insight(self, query_listing: PropertyListing, similar_listings: list[SimilarListing]) -> str:
         if not similar_listings:
             return "No similar listings were found, so no grounded insight can be generated."
-        if not listing:
-            return "No input listing was provided, so no grounded insight can be generated."
-        
+
         if not self._llm:
+            listing_ids = ", ".join(item.id for item in similar_listings)
             return (
                 "LLM generation is unavailable. "
-                f"Reason: {self._llm_error or 'unknown error'}."
+                f"Reason: {self._llm_error or 'unknown error'}. "
+                f"Retrieved similar listings: {listing_ids}."
             )
+
+        SYSTEM_PROMPT = """
+            You are a knowledgeable and professional Real Estate Assistant.
+            Use only the provided similar listings context to produce a concise insight.
+            Do not fabricate facts. If context is insufficient, explicitly say so.
+            Keep insight concise (2-4 sentences).
+            """
 
         context = "\n".join(
             f"- {item.id}: {listing_to_text(item.listing)} (distance={item.distance:.4f})"
             for item in similar_listings
         )
 
-        prompt = PromptTemplate.from_template(
-            """
-You are a real-estate assistant.
-Use only the provided similar listings context to produce a concise insight.
-Do not fabricate facts. If context is insufficient, explicitly say so.
-Always cite the listing IDs that informed your insight.
-
-Input listing:
-{input_listing}
-
-Similar listings:
-{context}
-
-Return 2-4 sentences.
-""".strip()
+        user_message = (
+            f"Input listing:\n{listing_to_text(query_listing)}\n\n"
+            f"Similar listings:\n{context}"
         )
 
-        response = self._llm.invoke(
-            prompt.format(input_listing=listing_to_text(query_listing), context=context)
-        )
-        return str(response).strip()
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+
+        print(f"Generating insight for listing: {query_listing}")
+        print(f"With similar listings: {[item.id for item in similar_listings]}")
+        response = self._llm.create_chat_completion(messages=messages)
+
+        insight = response["choices"][0]["message"]["content"]
+        print(f"Generated insight: {insight}")
+
+        return insight.strip()
 
     def collection_size(self) -> int:
         try:

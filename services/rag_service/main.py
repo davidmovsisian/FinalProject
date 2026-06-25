@@ -1,10 +1,9 @@
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, HTTPException
-
 from config import settings
-from models import AddListingResponse, InsightRequest, RetrieveResponse
+from models import PropertyListing, InsightResponse
 from rag_service import RAGService
+import requests
 
 rag_service = RAGService()
 
@@ -22,24 +21,22 @@ def health() -> dict[str, object]:
         "vector_count": rag_service.collection_size(),
     }
 
-@app.post("/retrieve")
-def retrieve(request: InsightRequest) -> RetrieveResponse:
-    try:
-        listing = request.to_listing()
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
+@app.post("/create-insight")
+def create_insight(listing: PropertyListing) -> InsightResponse:
+    api_url = settings.create_insight_url.strip()
+    if not api_url:
+        raise HTTPException(status_code=503, detail="Create insight URL is not configured.")
     similar = rag_service.retrieve_listings(listing, k=settings.top_k)
-    return RetrieveResponse(similar_listings=similar)
-
-
-@app.post("/add")
-def add_listing(request: InsightRequest) -> AddListingResponse:
     try:
-        listing = request.to_listing()
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        payload = {
+            "listing": listing.model_dump(),
+            "similar_listings": [s.model_dump() for s in similar],
+        }
+        response = requests.post(api_url, json=payload)
+        response.raise_for_status()
+        insight = response.json().get("insight", "")
+    except requests.RequestException as e:
+        insight = f"Error communicating with Create Insight: {e}"
 
     listing_id = rag_service.add_listing(listing)
-    return AddListingResponse(success=True, listing_id=listing_id)
-
+    return InsightResponse(listing_id=listing_id, similar_listings=similar, insight=insight)
