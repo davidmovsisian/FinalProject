@@ -1,8 +1,9 @@
 import os
+import base64
 import requests
 from io import BytesIO
 from contextlib import asynccontextmanager
-from typing import List
+from typing import List, Optional
 
 import torch
 import torch.nn as nn
@@ -20,9 +21,17 @@ load_dotenv()
 # =====================================================================
 # 1. API Input/Output Schemas (Pydantic)
 # =====================================================================
+class UploadedImage(BaseModel):
+    filename: str
+    mime_type: str   # e.g. "image/jpeg", "image/png"
+    data: str        # Raw base64-encoded image bytes (no data URI prefix)
+
 class AnalysisRequest(BaseModel):
-    # Expects a true JSON list of URLs: ["http://...", "http://..."]
-    image_urls: List[HttpUrl]
+    # Expects a JSON list of URLs: ["http://...", "http://..."]
+    image_urls: Optional[List[HttpUrl]] = []
+    # Expects a JSON list of structured image objects:
+    # [{"filename": "room.jpg", "mime_type": "image/jpeg", "data": "<base64>"}]
+    uploaded_images: Optional[List[UploadedImage]] = []
 
 class PredictionResult(BaseModel):
     room_type: str
@@ -89,8 +98,31 @@ class MultiHeadResNet50(nn.Module):
                 
             print(f"    Epoch [{epoch+1}/{epochs}] completed. Avg Loss: {running_loss / len(train_loader.dataset):.4f}")
 
+    def _run_inference(self, img: Image.Image, transform: transforms.Compose, device: torch.device) -> dict:
+        """Shared inference logic: takes a PIL image, returns raw prediction values."""
+        input_tensor = transform(img).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            room_logits, condition_out = self(input_tensor)
+
+            # Extract probability and class index
+            probabilities = F.softmax(room_logits, dim=1)
+            conf_tensor, predicted_idx = torch.max(probabilities, 1)
+
+            confidence = conf_tensor.item()
+            pred_class = self.class_names[predicted_idx.item()]
+
+            # Enforce reasonable continuous boundaries [1.0, 5.0]
+            pred_condition = max(1.0, min(5.0, condition_out.item()))
+
+        return {
+            "room_type": pred_class,
+            "condition_score": round(pred_condition, 2),
+            "confidence": round(confidence, 2),
+        }
+
     def predict_from_url(self, url: str, transform: transforms.Compose, device: torch.device) -> dict:
-        """Downloads an image from a URL, tracks zero gradients, and returns raw values."""
+        """Downloads an image from a URL and returns prediction values."""
         self.eval()
         try:
             response = requests.get(url, timeout=10)
@@ -99,27 +131,18 @@ class MultiHeadResNet50(nn.Module):
         except Exception as e:
             raise ValueError(f"Failed to fetch or process image from URL {url}: {str(e)}")
 
-        # Transform and inject batch dimension [1, 3, 224, 224]
-        input_tensor = transform(img).unsqueeze(0).to(device)
-        
-        with torch.no_grad():
-            room_logits, condition_out = self(input_tensor)
-            
-            # Extract probability and class index
-            probabilities = F.softmax(room_logits, dim=1)
-            conf_tensor, predicted_idx = torch.max(probabilities, 1)
-            
-            confidence = conf_tensor.item()
-            pred_class = self.class_names[predicted_idx.item()]
-            
-            # Enforce reasonable continuous boundaries [1.0, 5.0]
-            pred_condition = max(1.0, min(5.0, condition_out.item()))
-            
-        return {
-            "room_type": pred_class,
-            "condition_score": round(pred_condition, 2),
-            "confidence": round(confidence, 2)
-        }
+        return self._run_inference(img, transform, device)
+
+    def predict_from_uploaded(self, image: "UploadedImage", transform: transforms.Compose, device: torch.device) -> dict:
+        """Decodes a structured UploadedImage (filename + mime_type + base64 data) and returns prediction values."""
+        self.eval()
+        try:
+            image_bytes = base64.b64decode(image.data)
+            img = Image.open(BytesIO(image_bytes)).convert('RGB')
+        except Exception as e:
+            raise ValueError(f"Failed to decode or process uploaded image '{image.filename}': {str(e)}")
+
+        return self._run_inference(img, transform, device)
 
 
 # =====================================================================
@@ -192,6 +215,7 @@ def health_check() -> dict:
         "model_loaded": "model" in app_state,
         "device": str(DEVICE)
     }
+
 # =====================================================================
 # 5. REST Route Handlers
 # =====================================================================
@@ -200,15 +224,29 @@ async def analyse_images(payload: AnalysisRequest):
     model: MultiHeadResNet50 = app_state.get("model")
     if not model:
         raise HTTPException(status_code=503, detail="Model architecture is currently uninitialized.")
-        
+
+    if not payload.image_urls and not payload.uploaded_images:
+        raise HTTPException(
+            status_code=422,
+            detail="Request must include at least one entry in 'image_urls' or 'uploaded_images'."
+        )
+
     results = []
-    for url in payload.image_urls:
+
+    # --- Process URL-based images ---
+    for url in payload.image_urls or []:
         try:
-            # Cast Pydantic HttpUrl object to standard string representation
             prediction = model.predict_from_url(str(url), IMAGE_TRANSFORMS, DEVICE)
             results.append(prediction)
         except ValueError as exc:
-            # Return standard HTTP Bad Request if images fail network download or verification
             raise HTTPException(status_code=400, detail=str(exc))
-            
+
+    # --- Process structured uploaded images ---
+    for image in payload.uploaded_images or []:
+        try:
+            prediction = model.predict_from_uploaded(image, IMAGE_TRANSFORMS, DEVICE)
+            results.append(prediction)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     return results
