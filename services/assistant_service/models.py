@@ -24,14 +24,12 @@ class InsightRequest(BaseModel):
     similar_listings: list[SimilarListing]
 
 class HistoryMessage(BaseModel):
-    role: str            # "user" or "assistant"
-    content: Any = None  # str normally; list of blocks in Gradio 6 multimodal
-
+    role: str  
+    content: Any = None
 
 class ChatRequest(BaseModel):
     history: Optional[List[HistoryMessage]] = None
     message: Optional[str] = None
-
 
 class ChatResponse(BaseModel):
     response: str

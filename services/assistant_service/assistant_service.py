@@ -94,12 +94,7 @@ class AssistantService:
             return "No similar listings were found, so no grounded insight can be generated."
 
         if not self._llm:
-            listing_ids = ", ".join(item.id for item in similar_listings)
-            return (
-                "LLM generation is unavailable. "
-                f"Reason: {self._llm_error or 'unknown error'}. "
-                f"Retrieved similar listings: {listing_ids}."
-            )
+            return "LLM generation is unavailable."
 
         SYSTEM_PROMPT = """
             You are a knowledgeable and professional Real Estate Assistant.
