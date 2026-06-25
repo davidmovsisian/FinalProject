@@ -2,6 +2,8 @@ import gradio as gr
 import requests
 import json
 import os
+import base64
+import mimetypes
 
 # ─────────────────────────────────────────────
 #  Configuration (read from env or defaults)
@@ -98,15 +100,28 @@ def submit_listing(
     # Build image URL list
     url_list = [u.strip() for u in image_urls.split(",") if u.strip()] if image_urls else []
 
-    # Attach uploaded file paths if provided
+    # Attach uploaded files.
+    uploaded_images = []
     if images:
         for img in images:
-            url_list.append(f"file://{img}")
+            path = img["path"] if isinstance(img, dict) else img
+            name = img.get("orig_name", os.path.basename(path)) if isinstance(img, dict) else os.path.basename(path)
+            if path and os.path.isfile(path):
+                mime_type, _ = mimetypes.guess_type(path)
+                mime_type = mime_type or "application/octet-stream"
+                with open(path, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("utf-8")
+                uploaded_images.append({
+                    "filename": name,
+                    "mime_type": mime_type,
+                    "data": encoded,
+                })
 
     payload = {
         "agent_name": agent_name.strip(),
         "description": description.strip(),
         "image_urls": url_list,
+        "uploaded_images": uploaded_images,
     }
 
     try:
