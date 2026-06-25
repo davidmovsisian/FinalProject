@@ -1,4 +1,7 @@
+from dataclasses import Field
 from pathlib import Path
+
+from pydantic import BaseModel
 from llama_cpp import Llama
 from config import settings
 
@@ -87,16 +90,16 @@ class AssistantService:
         
         return answer
     
-    def generate_insight(self, query_listing: PropertyListing, similar_listings: list[SimilarListing]) -> str:
+    def generate_insight(self, listing: PropertyListing, similar_listings: list[SimilarListing]) -> str:
         if not similar_listings:
             return "No similar listings were found, so no grounded insight can be generated."
-
+        if not listing:
+            return "No input listing was provided, so no grounded insight can be generated."
+        
         if not self._llm:
-            listing_ids = ", ".join(item.id for item in similar_listings)
             return (
                 "LLM generation is unavailable. "
-                f"Reason: {self._llm_error or 'unknown error'}. "
-                f"Retrieved similar listings: {listing_ids}."
+                f"Reason: {self._llm_error or 'unknown error'}."
             )
 
         context = "\n".join(

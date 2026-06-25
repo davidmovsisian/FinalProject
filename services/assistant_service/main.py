@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from assistant_service import AssistantService
 from config import settings
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
+
+from services.rag_service.models import SimilarListing
 
 assistant_service = AssistantService()
 
@@ -88,14 +90,8 @@ def general_answer(request: ChatRequest) -> ChatResponse:
     )
     return ChatResponse(response=answer)
 
-@app.post("/create-insight", response_model=InsightResponse)
-def create_insight_endpoint(request: InsightRequest) -> InsightResponse:
-    try:
-        listing = request.to_listing()
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    similar = rag_service.retrieve(listing, k=settings.top_k)
-    insight = rag_service.generate_insight(listing, similar)
-    rag_service.add_vector_store(listing)
-    return InsightResponse(similar_listings=similar, insight=insight)
+@app.post("/create-insight")
+def create_insight(listing: PropertyListing, context: List[SimilarListing]) -> str:
+    
+    insight = assistant_service.generate_insight(listing, context= [item.model_dump() for item in context])
+    return insight
