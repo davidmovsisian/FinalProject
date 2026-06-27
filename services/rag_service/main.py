@@ -36,7 +36,7 @@ def create_insight(listing: PropertyListing) -> InsightResponse:
         response.raise_for_status()
         insight = response.json().get("insight", "")
     except requests.RequestException as e:
-        insight = f"Error communicating with Create Insight: {e}"
+        insight = f"Error communicating with assistant_service: {e}"
 
     listing_id = rag_service.add_listing(listing)
     return InsightResponse(listing_id=listing_id, similar_listings=similar, insight=insight)

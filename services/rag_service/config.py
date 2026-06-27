@@ -12,6 +12,7 @@ class Settings:
 
         self.chroma_path = os.getenv("CHROMA_PATH", "./chroma_db")
         self.listings_collection = os.getenv("LISTINGS_COLLECTION")
+        self.seed_vs = os.getenv("SEED_VS", "false").lower() == "true"
         
         self.embedding_model = os.getenv(
             "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"

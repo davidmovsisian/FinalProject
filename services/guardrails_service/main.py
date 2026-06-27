@@ -26,6 +26,20 @@ class CheckResponse(BaseModel):
     reason: str = ""
     safe_text: str = ""
 
+def _strip_json_fences(text: str) -> str:
+    """Remove markdown code fences (```json ... ``` or ``` ... ```) if present."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        # Drop the opening fence line (```json or ```)
+        inner = lines[1:]
+        # Drop the closing fence line if present
+        if inner and inner[-1].strip() == "```":
+            inner = inner[:-1]
+        text = "\n".join(inner).strip()
+    return text
+
+
 async def _call_llm(prompt: str) -> str:
     try:
         client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -33,9 +47,10 @@ async def _call_llm(prompt: str) -> str:
             model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
-            max_tokens=200,
+            max_tokens=1024,
         )
-        return response.choices[0].message.content.strip()
+        raw = response.choices[0].message.content.strip()
+        return _strip_json_fences(raw)
     except Exception as e:
         logger.error("LLM call failed: %s", e)
         raise
