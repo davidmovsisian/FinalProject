@@ -1,4 +1,5 @@
 services:
+  # download all required models and embeddings before starting the services
   rag_model_downloader:
     image: python:3.11-slim
     container_name: rag_model_downloader
@@ -12,7 +13,8 @@ services:
         apt-get update -qq
         apt-get install -y -qq wget
         wget --no-continue -c -P /models \
-          "https://huggingface.co/dphn/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf"
+          "https://huggingface.co/dphn/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf" \
+          "https://download.pytorch.org/models/resnet50-11ad3fa6.pth"
         pip install -q huggingface_hub
         python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='sentence-transformers/all-MiniLM-L6-v2', local_dir='/models/embeddings/all-MiniLM-L6-v2')"
     restart: "no"
@@ -54,6 +56,8 @@ services:
     container_name: image_analyzer_service
     env_file:
       - ./services/image_analyzer/.env
+    volumes:
+      - rag_models:/models
     ports:
       - "8002:8000"
     restart: unless-stopped

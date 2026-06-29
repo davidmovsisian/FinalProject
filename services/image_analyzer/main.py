@@ -4,7 +4,6 @@ import requests
 from io import BytesIO
 from contextlib import asynccontextmanager
 from typing import List, Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,6 +14,7 @@ from fastapi import FastAPI, HTTPException
 from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
 from dotenv import load_dotenv
+import math
 
 load_dotenv()
 
@@ -34,8 +34,8 @@ class AnalysisRequest(BaseModel):
     uploaded_images: Optional[List[UploadedImage]] = []
 
 class PredictionResult(BaseModel):
-    room_type: str
-    condition_score: float
+    type: str
+    condition_score: int
     confidence: float
 
 
@@ -43,13 +43,23 @@ class PredictionResult(BaseModel):
 # 2. Encapsulated Multi-Task Neural Network Class
 # =====================================================================
 class MultiHeadResNet50(nn.Module):
-    def __init__(self, num_classes: int, class_names: List[str] = None):
+    def __init__(self, num_classes: int, class_names: List[str] = None, resnet_weights_path: str = None):
         super(MultiHeadResNet50, self).__init__()
         self.class_names = class_names or []
         
-        # Build network architecture
-        weights = models.ResNet50_Weights.DEFAULT
-        self.backbone = models.resnet50(weights=weights)
+        # Build network architecture — load backbone weights from local path if provided,
+        # otherwise fall back to downloading the default pretrained weights from the internet.
+        if resnet_weights_path and os.path.exists(resnet_weights_path):
+            print(f"--> Loading ResNet50 backbone weights from volume: '{resnet_weights_path}'")
+            self.backbone = models.resnet50(weights=None)
+            self.backbone.load_state_dict(torch.load(resnet_weights_path, map_location="cpu"))
+        else:
+            if resnet_weights_path:
+                print(f"--> ResNet50 weights not found at '{resnet_weights_path}', downloading from PyTorch hub...")
+            else:
+                print("--> No local ResNet50 weights path provided, downloading from PyTorch hub...")
+                weights = models.ResNet50_Weights.DEFAULT
+                self.backbone = models.resnet50(weights=weights)
         
         # Freeze convolutional backbone
         for param in self.backbone.parameters():
@@ -116,8 +126,8 @@ class MultiHeadResNet50(nn.Module):
             pred_condition = max(1.0, min(5.0, condition_out.item()))
 
         return {
-            "room_type": pred_class,
-            "condition_score": round(pred_condition, 2),
+            "type": pred_class,
+            "condition_score": math.floor(pred_condition + 0.5),
             "confidence": round(confidence, 2),
         }
 
@@ -163,7 +173,9 @@ class HouseRoomsMultiTaskDataset(datasets.ImageFolder):
 APP_NAME = os.getenv("APP_NAME", "Multi-Task House Room Analyzer Engine")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 WEIGHTS_PATH = os.getenv("WEIGHTS_PATH", "house_model_weights.pth")
-DATASET_DIR = os.getenv("DATASET_DIR", "House_Room_Dataset")  
+DATASET_DIR = os.getenv("DATASET_DIR", "House_Room_Dataset")
+RESNET_WEIGHTS_PATH = os.getenv("RESNET_WEIGHTS_PATH", "/models/resnet50-11ad3fa6.pth")
+RESNET_WEIGHTS_URL  = os.getenv("RESNET_WEIGHTS_URL", "https://download.pytorch.org/models/resnet50-11ad3fa6.pth")
 
 # Shared normalization transforms used universally
 IMAGE_TRANSFORMS = transforms.Compose([
@@ -179,7 +191,7 @@ app_state = {}
 async def lifespan(app: FastAPI):
     """Handles startup orchestration: safely loading weights or spinning up training."""
     class_labels = ['Bathroom', 'Bedroom', 'Dinning', 'Kitchen', 'Livingroom']
-    model = MultiHeadResNet50(num_classes=len(class_labels), class_names=class_labels)
+    model = MultiHeadResNet50(num_classes=len(class_labels), class_names=class_labels, resnet_weights_path=RESNET_WEIGHTS_PATH)
     
     if os.path.exists(WEIGHTS_PATH):
         print(f"--> Found existing checkpoint '{WEIGHTS_PATH}'. Loading weights to {DEVICE}...")
@@ -219,12 +231,15 @@ def health_check() -> dict:
 # =====================================================================
 # 5. REST Route Handlers
 # =====================================================================
-@app.post("/analyse", response_model=List[PredictionResult])
+@app.post("/analyse")
 async def analyse_images(payload: AnalysisRequest):
     model: MultiHeadResNet50 = app_state.get("model")
     if not model:
         raise HTTPException(status_code=503, detail="Model architecture is currently uninitialized.")
 
+    # dump payload for debugging
+    print(f"Received analysis request: {payload.model_dump_json()}")
+    
     if not payload.image_urls and not payload.uploaded_images:
         raise HTTPException(
             status_code=422,
@@ -249,4 +264,4 @@ async def analyse_images(payload: AnalysisRequest):
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
-    return results
+    return {"conditions": results}

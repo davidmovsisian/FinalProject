@@ -10,7 +10,12 @@ class PropertyListing(BaseModel):
     property_type: str = Field(min_length=1)
     location: str = Field(min_length=1)
     price: str = Field(min_length=1)
-    rooms_number: int = Field(ge=0)
+    overall_condition: str = Field(min_length=1)
+    living_room: int = Field(ge=0)
+    bed_rooms: int = Field(ge=0)
+    kitchen: int = Field(ge=0)
+    bath_rooms: int = Field(ge=0)
+    storage: str = Field("")
     features: list[str] = Field(default_factory=list)
     conditions: list[RoomCondition] = Field(default_factory=list)
 

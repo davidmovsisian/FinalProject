@@ -23,6 +23,7 @@ def health() -> dict[str, object]:
 
 @app.post("/create-insight")
 def create_insight(listing: PropertyListing) -> InsightResponse:
+    print(f"Listing: {listing.model_dump()}")
     api_url = settings.create_insight_url.strip()
     if not api_url:
         raise HTTPException(status_code=503, detail="Create insight URL is not configured.")
@@ -32,7 +33,8 @@ def create_insight(listing: PropertyListing) -> InsightResponse:
             "listing": listing.model_dump(),
             "similar_listings": [s.model_dump() for s in similar],
         }
-        response = requests.post(api_url, json=payload)
+        print(f"Sending payload to assistant_service: {payload}")
+        response = requests.post(api_url, json=payload, timeout=360)
         response.raise_for_status()
         insight = response.json().get("insight", "")
     except requests.RequestException as e:

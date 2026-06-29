@@ -10,7 +10,12 @@ def listing_to_text(listing: PropertyListing) -> str:
         f"Property type: {listing.property_type}. "
         f"Location: {listing.location}. "
         f"Price: {listing.price}. "
-        f"Rooms: {listing.rooms_number}. "
+        f"Overall condition: {listing.overall_condition}. "
+        f"Living rooms: {listing.living_room}. "
+        f"Bedrooms: {listing.bed_rooms}. "
+        f"Kitchens: {listing.kitchen}. "
+        f"Bathrooms: {listing.bath_rooms}. "
+        f"Storage: {listing.storage}. "
         f"Features: {features}."
         f"{conditions_part}"
     )

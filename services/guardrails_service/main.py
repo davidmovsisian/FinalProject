@@ -146,6 +146,11 @@ RULES:
 - Only flag content that presents an unverifiable claim as established fact.
 - If multiple issues are found, list only the most critical one as the FAIL reason.
 - When in doubt, prefer PASS over a false positive.
+Important:
+- Standard real estate condition descriptors are ALWAYS acceptable and must never
+  be flagged, including: "turn-key", "move-in ready", "pristine", "immaculate",
+  "renovated", "newly renovated", "gut renovation", "mint condition". These are
+  conventional listing terms, not legal guarantees.
 
 TEXT TO AUDIT:
 {text}

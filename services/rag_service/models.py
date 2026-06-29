@@ -16,7 +16,7 @@ class PropertyListing(BaseModel):
     bed_rooms: int = Field(ge=0)
     kitchen: int = Field(ge=0)
     bath_rooms: int = Field(ge=0)
-    storage: str = Field(pattern="^(yes|no)$")
+    storage: str = Field("")
     features: list[str] = Field(default_factory=list)
     conditions: list[RoomCondition] = Field(default_factory=list)
 

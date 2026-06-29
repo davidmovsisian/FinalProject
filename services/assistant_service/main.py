@@ -61,3 +61,11 @@ def general_answer(request: ChatRequest) -> ChatResponse:
 def create_insight(request: InsightRequest) -> dict:
     insight = assistant_service.generate_insight(request.listing, request.similar_listings)
     return {"insight": insight}
+
+@app.post("/residential")
+def residential(request: InsightRequest) -> dict:
+    return {"residential": "ok"}
+
+@app.post("/commercial")
+def commercial(request: InsightRequest) -> dict:
+    return {"commercial": "ok"}
