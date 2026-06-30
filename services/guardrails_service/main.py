@@ -127,9 +127,16 @@ async def check_output(request: CheckRequest) -> CheckResponse:
     prompt =f"""You are a real estate AI output safety auditor.
 
 TASK: Review the AI-generated property report below and determine whether it
-contains any of the following prohibited content:
+contains prohibited content:
 
-PROHIBITED CONTENT:
+Important:
+- Prefer ALWAYS PASS over a false positive.
+- Standard real estate condition descriptors are ALWAYS acceptable and must never
+  be flagged, including: "turn-key", "move-in ready", "pristine", "immaculate",
+  "renovated", "newly renovated", "gut renovation", "mint condition". These are
+  conventional listing terms, not legal guarantees.
+
+Possible prohibited content:
 1. FALSE LEGAL CLAIMS — statements that imply legal guarantees or verified legal
    status without evidence (e.g., "guaranteed freehold title", "legally verified
    ownership", "court-certified clear title").
@@ -140,17 +147,12 @@ PROHIBITED CONTENT:
    without any basis (e.g., "ISO 9001 certified building", "LEED Platinum certified",
    "energy class A certified" when the report has no cited source for this).
 
-RULES:
+Rules:
 - Minor hedged opinions are acceptable (e.g., "estimated value around $X", "likely
   freehold based on listing data").
 - Only flag content that presents an unverifiable claim as established fact.
 - If multiple issues are found, list only the most critical one as the FAIL reason.
-- When in doubt, prefer PASS over a false positive.
-Important:
-- Standard real estate condition descriptors are ALWAYS acceptable and must never
-  be flagged, including: "turn-key", "move-in ready", "pristine", "immaculate",
-  "renovated", "newly renovated", "gut renovation", "mint condition". These are
-  conventional listing terms, not legal guarantees.
+- If content looks like prohibited, THINK AGAIN and PREFER TO PASS THE CONTENT.  
 
 TEXT TO AUDIT:
 {text}

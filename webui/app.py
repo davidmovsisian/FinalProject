@@ -10,7 +10,6 @@ import mimetypes
 # ─────────────────────────────────────────────
 N8N_WEBHOOK_URL_DEFAULT = os.getenv("N8N_WEBHOOK_URL", "http://n8n:5678/webhook-test/real-estate-assistant")
 AI_ASSISTANT_API_URL_DEFAULT = os.getenv("AI_ASSISTANT_API_URL", "http://assistant_service:8000/general_answer")
-ASSISTANT_SERVICE_BASE_URL_DEFAULT = os.getenv("ASSISTANT_SERVICE_BASE_URL", "http://assistant_service:8000")
 
 # ─────────────────────────────────────────────
 #  State helpers
@@ -18,86 +17,43 @@ ASSISTANT_SERVICE_BASE_URL_DEFAULT = os.getenv("ASSISTANT_SERVICE_BASE_URL", "ht
 _config = {
     "n8n_webhook_url": N8N_WEBHOOK_URL_DEFAULT,
     "ai_assistant_api_url": AI_ASSISTANT_API_URL_DEFAULT,
-    "assistant_service_base_url": ASSISTANT_SERVICE_BASE_URL_DEFAULT,
-}
-
-# Holds the most recent listing submission response:
-# { "listing_id": str, "passed": bool, "reason": str, "safe_text": str }
-_listing_context = {
-    "listing_id": "",
-    "passed": None,
-    "reason": "",
-    "safe_text": "",
 }
 
 def save_config(n8n_webhook_url: str, ai_assistant_api_url: str):
     _config["n8n_webhook_url"] = n8n_webhook_url.strip()
     _config["ai_assistant_api_url"] = ai_assistant_api_url.strip()
-    base = ai_assistant_api_url.strip().rsplit("/general_answer", 1)[0]
-    if base:
-        _config["assistant_service_base_url"] = base
     return "✅ Configuration saved successfully."
 
 
 # ─────────────────────────────────────────────
 #  AI Assistant chat
 # ─────────────────────────────────────────────
-def chat_with_assistant(message: str, history: list, listing_question: bool):
-    """Send message to the AI assistant service and stream/return the reply.
-
-    If `listing_question` is checked, the request is routed to the
-    `/answer-with-listing` endpoint using the listing_id stored in
-    `_listing_context` from the most recent listing submission. Otherwise
-    it goes to `/general_answer` as before.
-    """
+def chat_with_assistant(message: str, history: list):
+    """Send message to the AI assistant service and stream/return the reply."""
     if not message.strip():
         return history, ""
 
-    clean_history = [
-        {"role": m["role"], "content": m["content"]}
-        for m in history
-        if m.get("role") in ("user", "assistant") and m.get("content")
-    ]
+    api_url = _config.get("ai_assistant_api_url", "").strip()
 
-    if listing_question:
-        listing_id = (_listing_context.get("listing_id") or "").strip()
-        if not listing_id:
-            reply = "⚠️ Listing should be submitted before."
-            history = history + [
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": reply},
-            ]
-            return history, ""
-
-        base_url = _config.get("assistant_service_base_url", "").strip()
-        if not base_url:
-            history = history + [
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": "⚠️ AI Assistant API URL is not configured. Please set it in the Configuration tab."},
-            ]
-            return history, ""
-
-        api_url = f"{base_url}/answer-with-listing"
-        payload = {
-            "question": message,
-            "listing_id": listing_id,
-        }
-    else:
-        api_url = _config.get("ai_assistant_api_url", "").strip()
-        if not api_url:
-            history = history + [
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": "⚠️ AI Assistant API URL is not configured. Please set it in the Configuration tab."},
-            ]
-            return history, ""
-
-        payload = {
-            "message": message,
-            "history": clean_history,
-        }
+    if not api_url:
+        history = history + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": "⚠️ AI Assistant API URL is not configured. Please set it in the Configuration tab."},
+        ]
+        return history, ""
 
     try:
-        print(f"Sending request to {api_url} with payload: {payload}")
+        # Gradio 6 passes history as a list of {"role": ..., "content": ...} dicts
+        payload = {
+            "message": message,
+            "history": [
+                {
+                    "role": m["role"], "content": m["content"]} 
+                    for m in history
+                    if m.get("role") in ("user", "assistant") and m.get("content") #filter out any invalid entries
+                ],
+        }
+        print(f"Sending request to AI assistant API at {api_url} with payload: {payload}")
         response = requests.post(api_url, json=payload, timeout=180)
         response.raise_for_status()
         data = response.json()
@@ -169,7 +125,7 @@ def submit_listing(
     }
 
     try:
-        response = requests.post(webhook_url, json=payload, timeout=420)
+        response = requests.post(webhook_url, json=payload, timeout=180)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.ConnectionError:
@@ -188,48 +144,20 @@ def submit_listing(
             gr.update(visible=True, value=f"⚠️ Submission error: {exc}"),
         )
 
-    # Expected shape: { listing_id, passed, reason, safe_text }
-    if not isinstance(data, dict):
-        return (
-            gr.update(visible=False),
-            gr.update(visible=True, value=f"⚠️ Unexpected response from server: {data}"),
-        )
-
-    listing_id = str(data.get("listing_id") or "").strip()
-    passed = data.get("passed")
-    reason = str(data.get("reason") or "")
-    safe_text = str(data.get("safe_text") or "")
-
-    # Store whatever we got, so later listing-related questions can reference it.
-    _listing_context["listing_id"] = listing_id
-    _listing_context["passed"] = bool(passed)
-    _listing_context["reason"] = reason
-    _listing_context["safe_text"] = safe_text
-
-    if not listing_id:
-        return (
-            gr.update(visible=False),
-            gr.update(visible=True, value="⚠️ Listing submission failed: no listing ID was returned."),
-        )
-
-    if not passed:
-        error_msg = "⚠️ Listing did not pass validation."
-        if reason:
-            error_msg += f" Reason: {reason}"
-        return (
-            gr.update(visible=False),
-            gr.update(visible=True, value=error_msg),
-        )
-
     report_md = _format_report(data)
     return (
-        gr.update(visible=True, value=f"✅ Listing submitted successfully!\n\n{report_md}"),
+        gr.update(visible=True, value=report_md),
         gr.update(visible=False),
     )
 
 
 def _format_report(data: dict) -> str:
-    """Convert the n8n response JSON into readable Markdown."""
+    """Convert the n8n response JSON into readable Markdown.
+
+    "safe_text" already arrives as fully-formed Markdown (headings, bold
+    metadata lines, bullet lists, summary paragraph), so it's rendered
+    as-is rather than re-wrapped in another header.
+    """
     if not isinstance(data, dict):
         return f"## 📋 Property Triage Report\n\n{data}"
 
@@ -238,22 +166,22 @@ def _format_report(data: dict) -> str:
     reason = data.get("reason", "")
     safe_text = data.get("safe_text", "")
 
-    status_badge = "✅ **Passed**" if passed else "❌ **Not Passed**"
+    if safe_text:
+        return safe_text
 
+    # Fallback when there's no safe_text to show.
+    status_badge = "✅ **Passed**" if passed else "❌ **Not Passed**"
     lines = [
         "## 📋 Property Triage Report",
         "",
         f"**Listing ID:** {listing_id}  ",
         f"**Status:** {status_badge}  ",
     ]
-
     if reason:
         lines += ["", f"**Reason:** {reason}"]
 
-    if safe_text:
-        lines += ["", "---", "### 📝 Listing Text", "", safe_text]
-
     return "\n".join(lines)
+
 
 # ─────────────────────────────────────────────
 #  Build the Gradio UI
@@ -385,10 +313,6 @@ def build_ui():
             #  TAB 1 — Property Submission
             # ─────────────────────────────────────────
             with gr.TabItem("📝 Submit Listing"):
-                # gr.Markdown(
-                #     "Fill in the property details below and click **Submit Listing** to start the AI triage pipeline.",
-                #     elem_classes="card",
-                # )
 
                 with gr.Row():
                     with gr.Column(scale=3):
@@ -418,18 +342,6 @@ def build_ui():
                             variant="primary",
                             elem_id="submit-btn",
                         )
-
-                    # with gr.Column(scale=2):
-                    #     gr.HTML("""
-                    #     <div id="info-box">
-                    #       <strong>ℹ️ How it works</strong><br><br>
-                    #       1. Your submission is validated by the <b>Guardrails</b> service.<br><br>
-                    #       2. An AI extractor identifies property type, rooms, price, and key features.<br><br>
-                    #       3. Each image is classified by room type and given a <b>condition score (1–5)</b>.<br><br>
-                    #       4. Similar past listings are retrieved from the <b>knowledge base</b>.<br><br>
-                    #       5. A final <b>listing brief</b> is generated and the listing is routed to the correct team.
-                    #     </div>
-                    #     """)
 
                 # Results area
                 with gr.Row():
@@ -484,20 +396,6 @@ def build_ui():
                             label="Example questions",
                         )
 
-                    # with gr.Column(scale=1):
-                    #     gr.HTML("""
-                    #     <div id="info-box">
-                    #       <strong>🤖 AI Assistant</strong><br><br>
-                    #       Your knowledgeable real-estate assistant is ready to help.<br><br>
-                    #       Ask about:<br>
-                    #       • Market trends &amp; valuations<br>
-                    #       • Property types &amp; features<br>
-                    #       • Investment advice<br>
-                    #       • Listing best practices<br><br>
-                    #       <em>The assistant stays on real-estate topics and will politely decline off-topic requests.</em>
-                    #     </div>
-                    #     """)
-
                 send_btn.click(
                     fn=chat_with_assistant,
                     inputs=[chat_input, chatbot],
@@ -514,10 +412,6 @@ def build_ui():
             # ─────────────────────────────────────────
             with gr.TabItem("⚙️ Configuration"):
                 gr.Markdown("### Service Configuration")
-                # gr.Markdown(
-                #     "Configure the URLs for backend services. Changes take effect immediately without restarting.",
-                #     elem_classes="card",
-                # )
 
                 with gr.Column(elem_id="config-card"):
                     n8n_url_input = gr.Textbox(
@@ -541,17 +435,6 @@ def build_ui():
                     inputs=[n8n_url_input, ai_api_url_input],
                     outputs=[save_status],
                 )
-
-#                 gr.Markdown("""---
-# ### Environment Variables
-
-# You can also pre-set configuration via environment variables before launching:
-
-# | Variable | Description |
-# |---|---|
-# | `N8N_WEBHOOK_URL` | n8n webhook endpoint for listing submissions |
-# | `AI_ASSISTANT_API_URL` | Backend URL for the AI assistant chat service |
-# """)
 
     return demo
 
