@@ -10,6 +10,7 @@ import mimetypes
 # ─────────────────────────────────────────────
 N8N_WEBHOOK_URL_DEFAULT = os.getenv("N8N_WEBHOOK_URL", "http://n8n:5678/webhook-test/real-estate-assistant")
 AI_ASSISTANT_API_URL_DEFAULT = os.getenv("AI_ASSISTANT_API_URL", "http://assistant_service:8000/general_answer")
+ASSISTANT_SERVICE_BASE_URL_DEFAULT = os.getenv("ASSISTANT_SERVICE_BASE_URL", "http://assistant_service:8000")
 
 # ─────────────────────────────────────────────
 #  State helpers
@@ -17,43 +18,86 @@ AI_ASSISTANT_API_URL_DEFAULT = os.getenv("AI_ASSISTANT_API_URL", "http://assista
 _config = {
     "n8n_webhook_url": N8N_WEBHOOK_URL_DEFAULT,
     "ai_assistant_api_url": AI_ASSISTANT_API_URL_DEFAULT,
+    "assistant_service_base_url": ASSISTANT_SERVICE_BASE_URL_DEFAULT,
+}
+
+# Holds the most recent listing submission response:
+# { "listing_id": str, "passed": bool, "reason": str, "safe_text": str }
+_listing_context = {
+    "listing_id": "",
+    "passed": None,
+    "reason": "",
+    "safe_text": "",
 }
 
 def save_config(n8n_webhook_url: str, ai_assistant_api_url: str):
     _config["n8n_webhook_url"] = n8n_webhook_url.strip()
     _config["ai_assistant_api_url"] = ai_assistant_api_url.strip()
+    base = ai_assistant_api_url.strip().rsplit("/general_answer", 1)[0]
+    if base:
+        _config["assistant_service_base_url"] = base
     return "✅ Configuration saved successfully."
 
 
 # ─────────────────────────────────────────────
 #  AI Assistant chat
 # ─────────────────────────────────────────────
-def chat_with_assistant(message: str, history: list):
-    """Send message to the AI assistant service and stream/return the reply."""
+def chat_with_assistant(message: str, history: list, listing_question: bool):
+    """Send message to the AI assistant service and stream/return the reply.
+
+    If `listing_question` is checked, the request is routed to the
+    `/answer-with-listing` endpoint using the listing_id stored in
+    `_listing_context` from the most recent listing submission. Otherwise
+    it goes to `/general_answer` as before.
+    """
     if not message.strip():
         return history, ""
 
-    api_url = _config.get("ai_assistant_api_url", "").strip()
+    clean_history = [
+        {"role": m["role"], "content": m["content"]}
+        for m in history
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
 
-    if not api_url:
-        history = history + [
-            {"role": "user", "content": message},
-            {"role": "assistant", "content": "⚠️ AI Assistant API URL is not configured. Please set it in the Configuration tab."},
-        ]
-        return history, ""
+    if listing_question:
+        listing_id = (_listing_context.get("listing_id") or "").strip()
+        if not listing_id:
+            reply = "⚠️ Listing should be submitted before."
+            history = history + [
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": reply},
+            ]
+            return history, ""
 
-    try:
-        # Gradio 6 passes history as a list of {"role": ..., "content": ...} dicts
+        base_url = _config.get("assistant_service_base_url", "").strip()
+        if not base_url:
+            history = history + [
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": "⚠️ AI Assistant API URL is not configured. Please set it in the Configuration tab."},
+            ]
+            return history, ""
+
+        api_url = f"{base_url}/answer-with-listing"
+        payload = {
+            "question": message,
+            "listing_id": listing_id,
+        }
+    else:
+        api_url = _config.get("ai_assistant_api_url", "").strip()
+        if not api_url:
+            history = history + [
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": "⚠️ AI Assistant API URL is not configured. Please set it in the Configuration tab."},
+            ]
+            return history, ""
+
         payload = {
             "message": message,
-            "history": [
-                {
-                    "role": m["role"], "content": m["content"]} 
-                    for m in history
-                    if m.get("role") in ("user", "assistant") and m.get("content") #filter out any invalid entries
-                ],
+            "history": clean_history,
         }
-        print(f"Sending request to AI assistant API at {api_url} with payload: {payload}")
+
+    try:
+        print(f"Sending request to {api_url} with payload: {payload}")
         response = requests.post(api_url, json=payload, timeout=180)
         response.raise_for_status()
         data = response.json()
@@ -144,68 +188,72 @@ def submit_listing(
             gr.update(visible=True, value=f"⚠️ Submission error: {exc}"),
         )
 
+    # Expected shape: { listing_id, passed, reason, safe_text }
+    if not isinstance(data, dict):
+        return (
+            gr.update(visible=False),
+            gr.update(visible=True, value=f"⚠️ Unexpected response from server: {data}"),
+        )
+
+    listing_id = str(data.get("listing_id") or "").strip()
+    passed = data.get("passed")
+    reason = str(data.get("reason") or "")
+    safe_text = str(data.get("safe_text") or "")
+
+    # Store whatever we got, so later listing-related questions can reference it.
+    _listing_context["listing_id"] = listing_id
+    _listing_context["passed"] = bool(passed)
+    _listing_context["reason"] = reason
+    _listing_context["safe_text"] = safe_text
+
+    if not listing_id:
+        return (
+            gr.update(visible=False),
+            gr.update(visible=True, value="⚠️ Listing submission failed: no listing ID was returned."),
+        )
+
+    if not passed:
+        error_msg = "⚠️ Listing did not pass validation."
+        if reason:
+            error_msg += f" Reason: {reason}"
+        return (
+            gr.update(visible=False),
+            gr.update(visible=True, value=error_msg),
+        )
+
     report_md = _format_report(data)
     return (
-        gr.update(visible=True, value=report_md),
+        gr.update(visible=True, value=f"✅ Listing submitted successfully!\n\n{report_md}"),
         gr.update(visible=False),
     )
 
 
 def _format_report(data: dict) -> str:
     """Convert the n8n response JSON into readable Markdown."""
-    lines = ["## 📋 Property Triage Report", ""]
+    if not isinstance(data, dict):
+        return f"## 📋 Property Triage Report\n\n{data}"
 
-    prop_type = data.get("property_type", data.get("propertyType", "—"))
-    location   = data.get("location", "—")
-    price      = data.get("price", "—")
-    rooms      = data.get("rooms", data.get("number_of_rooms", "—"))
-    features   = data.get("key_features", data.get("keyFeatures", []))
-    routing    = data.get("routed_to", data.get("routedTo", "—"))
-    brief      = data.get("listing_brief", data.get("listingBrief", data.get("report", "")))
-    images_out = data.get("image_analysis", data.get("imageAnalysis", []))
-    similar    = data.get("similar_listings", data.get("similarListings", []))
+    listing_id = data.get("listing_id", "—")
+    passed = data.get("passed")
+    reason = data.get("reason", "")
+    safe_text = data.get("safe_text", "")
 
-    lines += [
-        f"**Property Type:** {prop_type}  ",
-        f"**Location:** {location}  ",
-        f"**Price:** {price}  ",
-        f"**Rooms:** {rooms}  ",
+    status_badge = "✅ **Passed**" if passed else "❌ **Not Passed**"
+
+    lines = [
+        "## 📋 Property Triage Report",
+        "",
+        f"**Listing ID:** {listing_id}  ",
+        f"**Status:** {status_badge}  ",
     ]
 
-    if features:
-        if isinstance(features, list):
-            lines += ["", "**Key Features:**"]
-            lines += [f"- {f}" for f in features]
-        else:
-            lines += [f"**Key Features:** {features}"]
+    if reason:
+        lines += ["", f"**Reason:** {reason}"]
 
-    if routing:
-        lines += ["", f"**Routed to:** {routing}"]
-
-    if images_out:
-        lines += ["", "---", "### 🖼️ Image Analysis"]
-        for img in (images_out if isinstance(images_out, list) else [images_out]):
-            room  = img.get("room_type", "—")
-            score = img.get("condition_score", "—")
-            conf  = img.get("confidence", None)
-            conf_str = f"  _(confidence: {conf:.0%})_" if conf is not None else ""
-            lines.append(f"- **{room}** — condition score: **{score}/5**{conf_str}")
-
-    if similar:
-        lines += ["", "---", "### 🔍 Similar Listings"]
-        for item in (similar if isinstance(similar, list) else [similar]):
-            if isinstance(item, dict):
-                title   = item.get("title", item.get("id", "Listing"))
-                insight = item.get("insight", item.get("summary", ""))
-                lines.append(f"- **{title}**: {insight}")
-            else:
-                lines.append(f"- {item}")
-
-    if brief:
-        lines += ["", "---", "### 📝 Listing Brief", "", brief]
+    if safe_text:
+        lines += ["", "---", "### 📝 Listing Text", "", safe_text]
 
     return "\n".join(lines)
-
 
 # ─────────────────────────────────────────────
 #  Build the Gradio UI
