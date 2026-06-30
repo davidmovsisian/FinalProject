@@ -1,5 +1,7 @@
 from pathlib import Path
 from llama_cpp import Llama
+import requests
+import google.generativeai as genai
 from config import settings
 from models import PropertyListing, SimilarListing
 from utils import listing_to_text
@@ -8,6 +10,8 @@ class AssistantService:
     def __init__(self) -> None:
         self._llm = None
         self._llm_error: str | None = None
+        self._gemini_model = None
+        self._gemini_error: str | None = None
 
     @property
     def llm_available(self) -> bool:
@@ -16,6 +20,14 @@ class AssistantService:
     @property
     def llm_error(self) -> str | None:
         return self._llm_error
+
+    @property
+    def gemini_available(self) -> bool:
+        return self._gemini_model is not None
+
+    @property
+    def gemini_error(self) -> str | None:
+        return self._gemini_error
 
     def initialize(self) -> None:
         if settings.assistant_llm_model_path:
@@ -38,6 +50,66 @@ class AssistantService:
                 self._llm_error = f"GGUF model file not found at: {model_path}"
         else:
             self._llm_error = "ASSISTANT_LLM_MODEL_PATH is not set"
+
+        if settings.gemini_api_key:
+            try:
+                genai.configure(api_key=settings.gemini_api_key)
+                self._gemini_model = genai.GenerativeModel(settings.gemini_model)
+            except Exception as exc:
+                self._gemini_error = f"Could not initialize Gemini model: {exc}"
+        else:
+            self._gemini_error = "GEMINI_API_KEY is not set"
+
+    def _retrieve_similar_listings_by_id(self, listing_id: str, k: int | None) -> list[SimilarListing]:
+        api_url = settings.rag_retrieve_by_id_url.strip()
+
+        payload = {
+            "listing_id": listing_id,
+            "k": k or settings.gemini_max_context_items,
+        }
+        response = requests.post(api_url, json=payload, timeout=settings.rag_request_timeout)
+        response.raise_for_status()
+
+        data = response.json()
+        raw_list = data.get("similar_listings", [])
+        similar_listings: list[SimilarListing] = []
+        for item in raw_list:
+            similar_listings.append(SimilarListing.model_validate(item))
+        return similar_listings
+
+    def answer_with_listing_context(
+        self,
+        question: str,
+        listing_id: str,
+        k: int | None = None,
+    ) -> str:
+        try:
+            similar_listings = self._retrieve_similar_listings_by_id(listing_id=listing_id, k=k)
+        except Exception as exc:
+            return f"Could not retrieve similar listings: {exc}"
+
+        context = "\n".join(
+            f"- {item.id}: {listing_to_text(item.listing)} (distance={item.distance:.4f})"
+            for item in similar_listings
+        )
+
+        prompt = (
+            "You are a professional real-estate assistant. Use only the context below to answer "
+            "the user's question. If the context is insufficient, clearly say that. "
+            "Keep the answer concise (2-5 sentences).\n\n"
+            f"Listing ID: {listing_id}\n\n"
+            f"User Question:\n{question}\n\n"
+            f"Similar Listings Context:\n{context}"
+        )
+
+        try:
+            response = self._gemini_model.generate_content(prompt)
+            answer = (response.text or "").strip()
+            if not answer:
+                answer = "Gemini returned an empty response."
+            return answer   
+        except Exception as exc:
+            return f"Could not generate Gemini answer: {exc}"
 
     def general_answer(self, message: str, history: list[dict] | None = None) -> str:
         SYSTEM_PROMPT = """

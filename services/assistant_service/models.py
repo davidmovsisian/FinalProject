@@ -38,3 +38,13 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+
+
+class ListingQuestionRequest(BaseModel):
+    listing_id: str = Field(min_length=1)
+    question: str = Field(min_length=1)
+    k: int | None = Field(default=5, ge=1)
+
+
+class ListingQuestionResponse(BaseModel):
+    response: str

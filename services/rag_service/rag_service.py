@@ -113,6 +113,58 @@ class RAGService:
         print(f"Added listing {listing_id} to vector store.")
         return listing_id
 
+    def retrieve_listings_by_id(self, listing_id: str, k: int | None = None) -> list[SimilarListing]:
+        # Retrieve the document by ID to get its text for similarity search
+        doc = self._vectorstore.get(ids=[listing_id])
+        if not doc or not doc.get("documents"):
+            print(f"No document found with ID: {listing_id}")
+            return []
+
+        query_text = doc["documents"][0]
+        if not query_text:
+            print(f"Document text is empty for ID: {listing_id}")
+            return []
+
+        requested_k = k or settings.top_k
+        results = self._vectorstore.similarity_search_with_score(
+            query=query_text,
+            k=requested_k + 1,
+        )
+
+        similar: list[SimilarListing] = []
+        for index, (document, distance) in enumerate(results, start=1):
+            metadata = document.metadata or {}
+            features = metadata.get("features", "")
+            conditions = parse_conditions(metadata.get("conditions", []))
+            doc_id = metadata.get("id")
+            if not doc_id:
+                doc_id = f"retrieved-{index}"
+            if doc_id == listing_id:
+                continue
+            similar.append(
+                SimilarListing(
+                    id=doc_id,
+                    distance=float(distance),
+                    listing=PropertyListing(
+                        property_type=str(metadata.get("property_type", "unknown")),
+                        location=str(metadata.get("location", "unknown")),
+                        price=str(metadata.get("price", "unknown")),
+                        overall_condition=str(metadata.get("overall_condition", "unknown")),
+                        living_room=int(metadata.get("living_room", 0)),
+                        bed_rooms=int(metadata.get("bed_rooms", 0)),
+                        kitchen=int(metadata.get("kitchen", 0)),
+                        bath_rooms=int(metadata.get("bath_rooms", 0)),
+                        storage=str(metadata.get("storage", "no")),
+                        features=[part.strip() for part in str(features).split(",") if part.strip()],
+                        conditions=conditions,
+                    ),
+                )
+            )
+            if len(similar) >= requested_k:
+                break
+
+        return similar
+    
     def retrieve_listings(self, listing: PropertyListing, k: int | None = None) -> list[SimilarListing]:
         results = self._vectorstore.similarity_search_with_score(
             query=listing_to_text(listing),

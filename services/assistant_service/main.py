@@ -3,7 +3,13 @@ from fastapi import FastAPI
 from assistant_service import AssistantService
 from config import settings
 from typing import Any
-from models import ChatRequest, ChatResponse, InsightRequest
+from models import (
+    ChatRequest,
+    ChatResponse,
+    InsightRequest,
+    ListingQuestionRequest,
+    ListingQuestionResponse,
+)
 
 assistant_service = AssistantService()
 
@@ -37,6 +43,8 @@ def health() -> dict[str, object]:
         "status": "ok",
         "llm_available": assistant_service.llm_available,
         "llm_error": assistant_service.llm_error,
+        "gemini_available": assistant_service.gemini_available,
+        "gemini_error": assistant_service.gemini_error,
     }
 
 @app.post("/general_answer", response_model=ChatResponse)
@@ -61,6 +69,16 @@ def general_answer(request: ChatRequest) -> ChatResponse:
 def create_insight(request: InsightRequest) -> dict:
     insight = assistant_service.generate_insight(request.listing, request.similar_listings)
     return {"insight": insight}
+
+
+@app.post("/answer-with-listing", response_model=ListingQuestionResponse)
+def answer_with_listing(request: ListingQuestionRequest) -> ListingQuestionResponse:
+    answer = assistant_service.answer_with_listing_context(
+        question=request.question,
+        listing_id=request.listing_id,
+        k=request.k,
+    )
+    return ListingQuestionResponse(response=answer)
 
 @app.post("/residential")
 def residential(request: InsightRequest) -> dict:

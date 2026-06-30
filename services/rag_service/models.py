@@ -33,3 +33,10 @@ class InsightResponse(BaseModel):
 class AddListingResponse(BaseModel):
     success: bool
     listing_id: str
+
+class RetrieveRequest(BaseModel):
+    listing_id: str
+    k: int | None = Field(default=5)
+
+class RetrieveResponse(BaseModel):
+    similar_listings: list[SimilarListing]
