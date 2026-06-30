@@ -125,7 +125,7 @@ def submit_listing(
     }
 
     try:
-        response = requests.post(webhook_url, json=payload, timeout=180)
+        response = requests.post(webhook_url, json=payload, timeout=420)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.ConnectionError:

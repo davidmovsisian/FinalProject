@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from config import settings
-from models import PropertyListing, InsightResponse, RetrieveRequest, SimilarListingRequest, RetrieveResponse
+from models import PropertyListing, InsightResponse, RetrieveRequest, RetrieveResponse
 from rag_service import RAGService
 import requests
 
