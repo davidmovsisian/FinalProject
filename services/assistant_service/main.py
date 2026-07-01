@@ -75,8 +75,7 @@ def create_insight(request: InsightRequest) -> dict:
 def answer_with_listing(request: ListingQuestionRequest) -> ListingQuestionResponse:
     answer = assistant_service.answer_with_listing_context(
         question=request.question,
-        listing_id=request.listing_id,
-        k=request.k,
+        listing_id=request.listing_id
     )
     return ListingQuestionResponse(response=answer)
 

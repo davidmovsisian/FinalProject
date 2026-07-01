@@ -23,8 +23,9 @@ def health() -> dict[str, object]:
 
 @app.post("/retrieve_by_id", response_model=RetrieveResponse)
 def retrieve_by_id(request: RetrieveRequest) -> RetrieveResponse:
-    similar_listings = rag_service.retrieve_listings_by_id(request.listing_id, k=request.k)
-    return RetrieveResponse(similar_listings=similar_listings)
+    print(f"/retrieve_by_id, payload: {request.model_dump()}")
+    listing, similar_listings = rag_service.retrieve_listings_by_id(request.listing_id, k=request.k)
+    return RetrieveResponse(listing=listing, similar_listings=similar_listings)
 
 @app.post("/create-insight")
 def create_insight(listing: PropertyListing) -> InsightResponse:

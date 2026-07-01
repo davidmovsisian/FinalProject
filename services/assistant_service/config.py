@@ -22,10 +22,9 @@ class Settings:
             "http://rag_service:8000/retrieve_by_id",
         )
         self.rag_request_timeout = int(os.getenv("RAG_REQUEST_TIMEOUT", "60"))
+        self.top_k = int(os.getenv("TOP_K", 5))
 
         self.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
         self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        self.gemini_max_context_items = int(os.getenv("GEMINI_MAX_CONTEXT_ITEMS", "5"))
-
 
 settings = Settings()

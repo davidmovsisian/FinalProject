@@ -5,6 +5,7 @@ import google.generativeai as genai
 from config import settings
 from models import PropertyListing, SimilarListing
 from utils import listing_to_text
+import json
 
 class AssistantService:
     def __init__(self) -> None:
@@ -60,47 +61,54 @@ class AssistantService:
         else:
             self._gemini_error = "GEMINI_API_KEY is not set"
 
-    def _retrieve_similar_listings_by_id(self, listing_id: str, k: int | None) -> list[SimilarListing]:
+    def _retrieve_similar_listings_by_id(self, listing_id: str, k: int) -> tuple[PropertyListing, list[SimilarListing]]:
         api_url = settings.rag_retrieve_by_id_url.strip()
 
         payload = {
             "listing_id": listing_id,
-            "k": k or settings.gemini_max_context_items,
+            "k": k,
         }
+        print(f"Send request to {api_url}, payload: {payload}")
         response = requests.post(api_url, json=payload, timeout=settings.rag_request_timeout)
         response.raise_for_status()
 
         data = response.json()
+        property_listing = PropertyListing.model_validate(data.get("listing"))
         raw_list = data.get("similar_listings", [])
         similar_listings: list[SimilarListing] = []
         for item in raw_list:
             similar_listings.append(SimilarListing.model_validate(item))
-        return similar_listings
+        return property_listing, similar_listings
 
     def answer_with_listing_context(
         self,
         question: str,
-        listing_id: str,
-        k: int | None = None,
+        listing_id: str
     ) -> str:
         try:
-            similar_listings = self._retrieve_similar_listings_by_id(listing_id=listing_id, k=k)
+            property_listing, similar_listings = self._retrieve_similar_listings_by_id(listing_id=listing_id, k=settings.top_k)
         except Exception as exc:
-            return f"Could not retrieve similar listings: {exc}"
-
+            return f"Error _retrieve_similar_listings_by_id: {exc}"
+        
+        print(f"Retrieved property_listing: {property_listing}")
+        property_listing_text = listing_to_text(property_listing)
         context = "\n".join(
             f"- {item.id}: {listing_to_text(item.listing)} (distance={item.distance:.4f})"
             for item in similar_listings
         )
 
+        print(f"context: {context}")
+        print(f"question: {question}")
+        print(f"property_listing: {property_listing_text}")
+        
         prompt = (
             "You are a professional real-estate assistant. Use only the context below to answer "
             "the user's question. If the context is insufficient, clearly say that. "
             "If the question is unrelated to real estate, reply exactly: 'Please ask a real-estate-related question.' "
             "Keep the answer concise (2-5 sentences).\n\n"
-            f"Listing ID: {listing_id}\n\n"
-            f"User Question:\n{question}\n\n"
+            f"Property Listing:\n - {listing_id}: {property_listing_text}\n"
             f"Similar Listings Context:\n{context}"
+            f"User Question:\n{question}\n\n"
         )
 
         try:

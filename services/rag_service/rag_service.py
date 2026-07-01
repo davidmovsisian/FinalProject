@@ -113,17 +113,36 @@ class RAGService:
         print(f"Added listing {listing_id} to vector store.")
         return listing_id
 
-    def retrieve_listings_by_id(self, listing_id: str, k: int | None = None) -> list[SimilarListing]:
+    def retrieve_listings_by_id(self, listing_id: str, k: int | None = None) -> tuple[PropertyListing, list[SimilarListing]]:
         # Retrieve the document by ID to get its text for similarity search
+        print(f"looking up for similar lisings for listing_id {listing_id}")
         doc = self._vectorstore.get(ids=[listing_id])
         if not doc or not doc.get("documents"):
             print(f"No document found with ID: {listing_id}")
-            return []
+            return None, []
 
         query_text = doc["documents"][0]
         if not query_text:
             print(f"Document text is empty for ID: {listing_id}")
-            return []
+            return None, []
+
+        # Build the queried listing from its stored metadata
+        source_metadata = (doc.get("metadatas") or [{}])[0]
+        source_features = source_metadata.get("features", "")
+        source_conditions = parse_conditions(source_metadata.get("conditions", []))
+        queried_listing = PropertyListing(
+            property_type=str(source_metadata.get("property_type", "unknown")),
+            location=str(source_metadata.get("location", "unknown")),
+            price=str(source_metadata.get("price", "unknown")),
+            overall_condition=str(source_metadata.get("overall_condition", "unknown")),
+            living_room=int(source_metadata.get("living_room", 0)),
+            bed_rooms=int(source_metadata.get("bed_rooms", 0)),
+            kitchen=int(source_metadata.get("kitchen", 0)),
+            bath_rooms=int(source_metadata.get("bath_rooms", 0)),
+            storage=str(source_metadata.get("storage", "no")),
+            features=[part.strip() for part in str(source_features).split(",") if part.strip()],
+            conditions=source_conditions,
+        )
 
         requested_k = k or settings.top_k
         results = self._vectorstore.similarity_search_with_score(
@@ -162,8 +181,8 @@ class RAGService:
             )
             if len(similar) >= requested_k:
                 break
-
-        return similar
+            print(f"similar listings: {json.dumps([sl.model_dump() for sl in similar])}")
+        return queried_listing, similar
     
     def retrieve_listings(self, listing: PropertyListing, k: int | None = None) -> list[SimilarListing]:
         results = self._vectorstore.similarity_search_with_score(

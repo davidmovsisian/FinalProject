@@ -39,4 +39,5 @@ class RetrieveRequest(BaseModel):
     k: int | None = Field(default=5)
 
 class RetrieveResponse(BaseModel):
+    listing: PropertyListing
     similar_listings: list[SimilarListing]
