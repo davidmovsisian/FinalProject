@@ -1,0 +1,697 @@
+{
+  "name": "Final Project 1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "real-estate-assistant",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        6160,
+        4432
+      ],
+      "id": "ac2fb398-1cd2-47a0-91cd-94bef15539dc",
+      "name": "Webhook",
+      "webhookId": "13623cfe-e616-467f-8876-86582448513a"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        6752,
+        4752
+      ],
+      "id": "a163b463-f3d7-4da7-b108-2d945512cff9",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.safe_text }}",
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n  \"property_type\": \"Luxury Penthouse Condominium\",\n  \"location\": \"Arts District, Downtown Metropolis\",\n  \"price\": \"2450000\",\n  \"overall_condition\": \"Turn-key / Pristine (Recent 2025 gut renovation)\",\n  \"living_room\": 1,\n  \"bed_rooms\": 2,\n  \"kitchen\": 1,\n  \"bath_rooms\": 1,\n  \"dining_room\": 1,\n  \"storage\": \"Custom-built walk-in wardrobe\",\n  \"features\": [\n    \"Concrete ceilings\",\n    \"Steel-framed windows\",\n    \"Skyline terrace\",\n    \"Smart-home system\"\n  ]\n}",
+        "options": {
+          "systemPromptTemplate": "You are a real-estate information extractor.\n\nExtract the following fields from the property description:\n\n- property_type: string\n- location: string\n- price: numeric string without currency symbols (e.g. \"2450000\")\n- overall_condition: string\n- living_room: INTEGER count only (e.g. 1). If not mentioned, default to 1.\n- bed_rooms: INTEGER count only (e.g. 2).\n- kitchen: INTEGER count only (e.g. 1).\n- bath_rooms: INTEGER count only (e.g. 1).\n- storage: string describing storage (e.g. \"walk-in wardrobe\")\n- features: array of UP TO 4 strings listing the most important property features.\n  IMPORTANT:\n  1. Select only the 4 most notable/standout features overall (combine amenities and any outstanding room details into one ranked shortlist) — do not include every amenity or every room.\n  2. Each feature must be a short single sentence fragment, MAX 25 characters (e.g. \"Concrete ceilings\", \"Skyline terrace\").\n  3. Do not prefix features with room names or use full sentences — keep each one terse and punchy.\n  4. If fewer than 4 standout features exist, return fewer rather than padding the list.\n\nRules:\n- living_room, bed_rooms, kitchen, bath_rooms must be plain integers — never strings, never descriptions.\n- Never put room descriptions in the room count fields.\n- Return valid JSON only."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        6976,
+        4432
+      ],
+      "id": "577eabf2-b79c-4d92-b378-233bfa0f2f32",
+      "name": "Information Extractor"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Process the following property listing:\n{{ JSON.stringify($json) }}\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a real estate listing analysis agent.\n\n## Your ONLY job — two steps, in this exact order:\n\n1. **Call the RAG Service tool** with ALL of these fields from the input JSON, passing them exactly as received:\n   - property_type, location, price, overall_condition\n   - living_room, bed_rooms, kitchen, bath_rooms\n   - storage, features\n   - conditions (full array)\n\n2. **Return the RAG Service response as-is** — DO NOT reformat, restructure, or add anything.\n   The output must contain EXACTLY what the RAG Service returned and ONLY these fields:\n   - listing_id\n   - similar_listings (array, unchanged)\n   - insight (string, unchanged — do NOT rewrite it)\n\nRules:\n- Do NOT skip calling the RAG Service tool.\n- Do NOT generate an insight yourself.\n- Do NOT restructure similar_listings.\n- Do NOT add fields that were not in the RAG Service response."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        7856,
+        4416
+      ],
+      "id": "aa643ec2-8da8-459c-b449-7ae2cede528f",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json.output) }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a professional real estate copywriter producing a listing report.\n\nYou will receive a JSON object with the following fields:\n- listing_id         — unique identifier for this listing\n- property_type      — type of property\n- location           — where the property is\n- price              — asking price\n- overall_condition  — overall condition description\n- rooms              — object with living_room, bed_rooms, kitchen, bath_rooms counts\n- storage            — storage details\n- features           — array of notable features\n- conditions         — array of image analysis results, each with:\n    - type            (room/area name)\n    - condition_score (1–5, where 5 = excellent)\n    - confidence      (0–1, model confidence in the score)\n- similar_listings   — array of comparable properties from the RAG service, each with:\n    - id\n    - distance        (similarity distance; lower = more similar)\n    - listing         (full listing object with its own fields and conditions)\n- insight            — analysis string returned by the RAG service\n\n---\n\n## Your task\n\nProduce a Markdown report with this exact structure:\n\n---\n\n# [property_type] — [location]\n\n**Listing ID:** [listing_id]\n**Price:** [price]\n**Condition:** [overall_condition]\n**Rooms:** [living_room] Living Room | [bed_rooms] Bedrooms | [kitchen] Kitchen | [bath_rooms] Bathrooms\n**Storage:** [storage]\n\n## Key Features\nRender each item in the features array as a bullet point.\n\n## Room Conditions\nFor each entry in conditions, render a bullet using this pattern:\n- **[type]** — [condition_score]/5\n\n## Summary\nWrite a brief summary of 5–6 sentences (no bullet points here) that uses the similar_listings and insight fields to highlight the property's strengths and weaknesses relative to the market. Paraphrase the insight and the comparables in your own words — do not reproduce the insight text verbatim and do not list out the comparable listings individually. Reference distance as a proxy for similarity (distance 0 = identical) only where it clarifies the comparison. End with a clear, balanced takeaway on where this listing stands.\n\n---\n\nRules:\n- Do NOT invent facts not present in the input.\n- If a field is missing or null, omit that section gracefully.\n- The report must be valid Markdown.\n- Be concise and professional throughout — the Summary section especially must stay to 5–6 sentences."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        8272,
+        4416
+      ],
+      "id": "c52f7d64-2f22-467f-a65f-31ba5cd99132",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "toolDescription": "RAG service. Receives property listing, returns listing_id, similar listings and insight.",
+        "method": "POST",
+        "url": "http://rag_service:8000/create-insight",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "property_type",
+              "value": "={{ $fromAI('property_type', 'The property type as a string', 'string') }}"
+            },
+            {
+              "name": "location",
+              "value": "={{ $fromAI('location', 'The location as a string', 'string') }}"
+            },
+            {
+              "name": "price",
+              "value": "={{ $fromAI('price', 'The price as a string ', 'string') }}"
+            },
+            {
+              "name": "overall_condition",
+              "value": "={{ $fromAI('overall_condition', 'The overall condition as a string', 'string') }}"
+            },
+            {
+              "name": "living_room",
+              "value": "={{ $fromAI('living_room', 'Number of living rooms as a whole integer', 'number') }}"
+            },
+            {
+              "name": "bed_rooms",
+              "value": "={{ $fromAI('bed_rooms', 'Number of bedrooms as a whole integer', 'number') }}"
+            },
+            {
+              "name": "kitchen",
+              "value": "={{ $fromAI('kitchen', 'Number of kitchens as a whole integer', 'number') }}"
+            },
+            {
+              "name": "bath_rooms",
+              "value": "={{ $fromAI('bath_rooms', 'Number of bathrooms as a whole integer', 'number') }}"
+            },
+            {
+              "name": "storage",
+              "value": "={{ $fromAI('storage', 'Storage description as a plain string', 'string') }}"
+            },
+            {
+              "name": "features",
+              "value": "={{ $fromAI('features', 'Array of feature strings', 'json') }}"
+            },
+            {
+              "name": "conditions",
+              "value": "={{ $fromAI('conditions', 'Array of condition objects with type (string), condition_score (integer), confidence (number)', 'json') }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 3000000
+        },
+        "optimizeResponse": true
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        8112,
+        4528
+      ],
+      "id": "faf4c4e3-dbcd-46e8-8f28-9dcda84f9a80",
+      "name": "RAG Service"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        6976,
+        4656
+      ],
+      "id": "f65060db-76f8-4979-bc06-b2459639840c",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Mo9okhiiDF7eCMEn",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $execution.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        7904,
+        4608
+      ],
+      "id": "be1566e7-699e-402f-ba68-45fa1479434b",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        8272,
+        4608
+      ],
+      "id": "fe9a7383-307a-40a7-af69-59aa3d097995",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Mo9okhiiDF7eCMEn",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fdd66148-0c6d-44ca-83ff-818832abbe1b",
+              "leftValue": "={{ $json.passed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        6720,
+        4432
+      ],
+      "id": "cbe61813-2b10-4a1c-96b6-474ed18eed1e",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://guardrails_service:8000/check/input",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.body.description }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6464,
+        4432
+      ],
+      "id": "c39e8b8b-3b89-4245-8605-14575026f654",
+      "name": "GuardRail_input"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://guardrails_service:8000/check/output",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.output.brief }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        8592,
+        4416
+      ],
+      "id": "28ec13f9-a141-46bf-83d8-6aec51700ef5",
+      "name": "GuardRail_Output"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"listing_id\": \"listing-251\",\n  \"property_type\": \"Luxury Penthouse Condominium\",\n  \"location\": \"Arts District, Downtown Metropolis\",\n  \"price\": \"2450000\",\n  \"overall_condition\": \"Turn-key / Pristine\",\n  \"rooms\": {\n    \"living_room\": \"1\",\n    \"bed_rooms\": \"1\",\n    \"kitchen\": \"1\",\n    \"bath_rooms\": \"1\"\n  },\n  \"storage\": \"Custom-built walk-in wardrobe\",\n  \"features\": [\n    \"feature string\"\n  ],\n  \"conditions\": [\n    {\n      \"type\": \"Bedroom\",\n      \"condition_score\": \"3\",\n      \"confidence\": \"0.7\"\n    }\n  ],\n  \"similar_listings\": [\n    {\n      \"id\": \"listing-238\",\n      \"distance\": 0.7022441453417463,\n      \"listing\": {\n        \"property_type\": \"apartment\",\n        \"location\": \"Yerevan, Arabkir\",\n        \"price\": \"$115000\",\n        \"overall_condition\": \"good\",\n        \"living_room\": 1,\n        \"bed_rooms\": 2,\n        \"kitchen\": 1,\n        \"bath_rooms\": 1,\n        \"storage\": \"yes\",\n        \"features\": [\n          \"feature string\"\n        ],\n        \"conditions\": [\n          {\n            \"type\": \"living_room\",\n            \"condition_score\": 3,\n            \"confidence\": 0.76\n          }\n        ]\n      }\n    }\n  ],\n  \"insight\": \"string\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        8016,
+        4672
+      ],
+      "id": "59ca3098-9ddb-4521-ae85-7133607d73d4",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        7360,
+        4416
+      ],
+      "id": "40e045dd-b175-4f91-a045-063dd63cc9df",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const conditions = $input.all().find(i => i.json.conditions)?.json.conditions;\nconst output = $input.all().find(i => i.json.output)?.json.output;\n\nreturn [\n  {\n    json: {\n      ...output,\n      conditions,\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7568,
+        4416
+      ],
+      "id": "5212959f-89d0-4e91-a686-92ecb2a74278",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://image_analyzer_service:8000/analyse",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "image_urls",
+              "value": "={{ $('Webhook').item.json.body.image_urls }}"
+            },
+            {
+              "name": "uploaded_images",
+              "value": "={{ $('Webhook').item.json.body.uploaded_images }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        6880,
+        4128
+      ],
+      "id": "98ff2e9b-597a-44e0-aaef-677190eced5c",
+      "name": "Images Analyzer"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        7744,
+        4608
+      ],
+      "id": "8b34b1d2-c96c-4836-afd4-4dc914bb4473",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "nlExQBrBdh4HvMTp",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"listing_id\": \"listing-251\",\n  \"brief\": \"# Luxury Penthouse Condominium \\u2014 Arts District\\\\n\\\\n**Listing ID:** listing-251\\\\n...\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        8416,
+        4608
+      ],
+      "id": "da390d5e-1ffe-4bb3-9e56-a7b1d5d83986",
+      "name": "Structured Output Parser1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const axios = require('axios');\n\nconst residentialRegex = /(apartment|house|villa|penthouse|condo|condominium|townhouse|bungalow|cottage|studio|flat|duplex|triplex|maisonette|loft|chalet|cabin|manor|mansion|residential)/i;\n\nconst propertyType = $('AI Agent').first().json.output.property_type|| \"\";\n\nif($input.first().json.passed == false)\n{\n   return [{ json: { passed: false, reason: $input.first().json.reason, propertyType, routedTo: \"\" } }];\n}\n\nconst safe_text = $input.first().json.safe_text;\n\nlet targetUrl = \"http://commercial_team:8000/listing\"; \nif (residentialRegex.test(propertyType)) {\ntargetUrl = \"https://residential_team:8000/listing\";\n}\n\n// 5. Send the payload to the respective endpoint\ntry {\n  await axios.post(targetUrl, safe_text);\n} catch (error) {\n  // If the request fails, attach the error log to the node output for debugging\n    return [{ json: { success: false, error: error.message, propertyType, routedTo: targetUrl } }];\n  }\n  \n  // Return the final data payload along with routing details\n  return [\n    {\n      json: {\n        success: true,\n        routedTo: targetUrl,\n        propertyType: propertyType,\n        safe_text: safe_text\n      }\n    }\n  ];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8880,
+        4416
+      ],
+      "id": "b9bf5d13-927d-4545-8613-5726255c03e8",
+      "name": "Router"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        8960,
+        4176
+      ],
+      "id": "68441c30-054e-434b-8b80-c879f48a2dc5",
+      "name": "Respond to Webhook2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c64bc529-8cc4-4293-a1e7-25eb72bb27c2",
+              "name": "=listing_id",
+              "value": "={{ $('Basic LLM Chain').item.json.output.listing_id }}",
+              "type": "string"
+            },
+            {
+              "id": "8bbcc79d-ec0f-48ae-9050-1f407a97b3df",
+              "name": "passed",
+              "value": "={{ $json.passed }}",
+              "type": "boolean"
+            },
+            {
+              "id": "ca8e98d3-d948-4b68-81ee-a6eed5d3f771",
+              "name": "reason",
+              "value": "={{ $json.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "8203ff6e-fe5b-419a-81c7-a0ea9bbda0ad",
+              "name": "safe_text",
+              "value": "={{ $json.safe_text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        8784,
+        4176
+      ],
+      "id": "09411c6f-9e5e-4fa3-806f-f98af3bb5703",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "GuardRail_input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "GuardRail_Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG Service": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Images Analyzer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GuardRail_input": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GuardRail_Output": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Images Analyzer": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "0de6a4c9-32c5-4c69-9290-a818b3f04e94",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cbb2562cdadce85d186a8de059f04600af1c17f77d4cac3b4e98796b985b5bad"
+  },
+  "id": "wk7mN0cG2F0qCNc9",
+  "tags": []
+}
